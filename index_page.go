@@ -42,7 +42,7 @@ func ParseIndexPage(ip *InnerPage) (*IndexPage, error) {
 	if !bytes.Equal(ip.Data[cur:cur+SystemRecordBytes], LitInfimum) {
 		return nil, fmt.Errorf("INFIMUM literal mismatch at %d", cur)
 	}
-	inf := GenericRecord{PageNumber: ip.PageNo, Header: infHdr, PrimaryKeyPos: cur}
+	inf := GenericRecord{PageNumber: ip.PageNo, Header: infHdr, PrimaryKeyPos: cur, Data: ip.Data[cur : cur+SystemRecordBytes]}
 	cur += SystemRecordBytes
 
 	// SUPREMUM
@@ -54,7 +54,7 @@ func ParseIndexPage(ip *InnerPage) (*IndexPage, error) {
 	if !bytes.Equal(ip.Data[cur:cur+SystemRecordBytes], LitSupremum) {
 		return nil, fmt.Errorf("SUPREMUM literal mismatch at %d", cur)
 	}
-	sup := GenericRecord{PageNumber: ip.PageNo, Header: supHdr, PrimaryKeyPos: cur}
+	sup := GenericRecord{PageNumber: ip.PageNo, Header: supHdr, PrimaryKeyPos: cur, Data: ip.Data[cur : cur+SystemRecordBytes]}
 	cur += SystemRecordBytes
 	_ = cur
 

@@ -25,13 +25,12 @@
 //
 //	file, _ := os.Open("table.ibd")
 //	defer file.Close()
-//	
+//
 //	reader := goinnodb.NewPageReader(file)
 //	page, _ := reader.ReadPage(3)
-//	
+//
 //	if page.PageType() == goinnodb.PageTypeIndex {
 //	    indexPage, _ := goinnodb.ParseIndexPage(page)
 //	    records, _ := indexPage.WalkRecords(100, true)
 //	}
-//
 package goinnodb

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	goinnodb "github.com/wilhasse/go-innodb"
@@ -128,14 +129,38 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 				fmt.Printf("  Error walking records: %v\n", err)
 			} else {
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-				fmt.Fprintf(w, "  #\tHeap#\tType\tDeleted\tOwned\tNext\n")
-				for i, rec := range records {
-					fmt.Fprintf(w, "  %d\t%d\t%s\t%v\t%d\t%d\n",
-						i, rec.Header.HeapNumber,
-						recordTypeName(rec.Header.Type),
-						rec.Header.FlagsDeleted,
-						rec.Header.NumOwned,
-						rec.Header.NextRecOffset)
+				if verbose {
+					fmt.Fprintf(w, "  #\tHeap#\tType\tDeleted\tOwned\tNext\tData (hex)\tReadable Strings\n")
+					for i, rec := range records {
+						dataHex := ""
+						readable := ""
+						if len(rec.Data) > 0 {
+							if len(rec.Data) > 50 {
+								dataHex = fmt.Sprintf("%x... (%d bytes)", rec.Data[:50], len(rec.Data))
+							} else {
+								dataHex = fmt.Sprintf("%x", rec.Data)
+							}
+							readable = extractReadableStrings(rec.Data)
+						}
+						fmt.Fprintf(w, "  %d\t%d\t%s\t%v\t%d\t%d\t%s\t%s\n",
+							i, rec.Header.HeapNumber,
+							recordTypeName(rec.Header.Type),
+							rec.Header.FlagsDeleted,
+							rec.Header.NumOwned,
+							rec.Header.NextRecOffset,
+							dataHex,
+							readable)
+					}
+				} else {
+					fmt.Fprintf(w, "  #\tHeap#\tType\tDeleted\tOwned\tNext\n")
+					for i, rec := range records {
+						fmt.Fprintf(w, "  %d\t%d\t%s\t%v\t%d\t%d\n",
+							i, rec.Header.HeapNumber,
+							recordTypeName(rec.Header.Type),
+							rec.Header.FlagsDeleted,
+							rec.Header.NumOwned,
+							rec.Header.NextRecOffset)
+					}
 				}
 				w.Flush()
 
@@ -303,4 +328,30 @@ func leafOrInternal(p *goinnodb.IndexPage) string {
 		return "(root internal)"
 	}
 	return "(internal)"
+}
+
+// extractReadableStrings extracts ASCII strings from binary data
+func extractReadableStrings(data []byte) string {
+	var result []string
+	var current []byte
+
+	for _, b := range data {
+		// Check if byte is printable ASCII (32-126)
+		if b >= 32 && b <= 126 {
+			current = append(current, b)
+		} else {
+			// If we have accumulated at least 3 characters, consider it a string
+			if len(current) >= 3 {
+				result = append(result, string(current))
+			}
+			current = nil
+		}
+	}
+
+	// Don't forget the last string if any
+	if len(current) >= 3 {
+		result = append(result, string(current))
+	}
+
+	return strings.Join(result, " | ")
 }

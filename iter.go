@@ -32,6 +32,30 @@ func (p *IndexPage) WalkRecords(max int, skipSystem bool) ([]GenericRecord, erro
 			return out, err
 		}
 		rec := GenericRecord{PageNumber: p.Inner.PageNo, Header: hdr, PrimaryKeyPos: nextContent}
+
+		// Read the actual record data
+		// For now, read up to the next record or a reasonable amount of bytes
+		dataSize := 0
+		if hdr.NextRecOffset > 0 && hdr.NextRecOffset > RecordHeaderSize {
+			// Size is roughly the distance to the next record minus the header
+			dataSize = hdr.NextRecOffset - RecordHeaderSize
+		} else if hdr.Type == RecSupremum {
+			// Supremum has fixed 8-byte data
+			dataSize = 8
+		} else {
+			// For the last user record or unknown cases, read a reasonable amount
+			// This is a heuristic - proper implementation needs column definitions
+			dataSize = 100 // Read up to 100 bytes of data
+			maxPos := len(p.Inner.Data) - nextContent
+			if dataSize > maxPos {
+				dataSize = maxPos
+			}
+		}
+
+		if dataSize > 0 && nextContent+dataSize <= len(p.Inner.Data) {
+			rec.Data = p.Inner.Data[nextContent : nextContent+dataSize]
+		}
+
 		if rec.Header.Type == RecSupremum {
 			if !skipSystem {
 				out = append(out, rec)

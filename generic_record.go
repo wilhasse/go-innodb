@@ -7,6 +7,7 @@ type GenericRecord struct {
 	Header          RecordHeader
 	PrimaryKeyPos   int    // absolute offset where this record's content starts
 	ChildPageNumber uint32 // for internal pages (not decoded here)
+	Data            []byte // raw record data (excluding header)
 }
 
 func (r GenericRecord) NextRecordPos() int {
