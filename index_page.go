@@ -1,3 +1,4 @@
+// index_page.go - INDEX page parsing with records and directory
 package goinnodb
 
 import (

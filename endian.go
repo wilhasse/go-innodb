@@ -1,3 +1,4 @@
+// endian.go - Big-endian byte reading utilities
 package goinnodb
 
 import (

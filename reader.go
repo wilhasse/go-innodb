@@ -1,3 +1,4 @@
+// reader.go - Page reader for reading from InnoDB data files
 package goinnodb
 
 import (

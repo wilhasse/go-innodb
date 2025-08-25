@@ -1,3 +1,4 @@
+// fil.go - FIL header and trailer parsing for InnoDB pages
 package goinnodb
 
 import "fmt"

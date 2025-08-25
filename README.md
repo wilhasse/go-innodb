@@ -183,12 +183,19 @@ go-innodb/
 │   └── go-innodb/         # CLI tool source
 │       └── main.go
 ├── docs/                  # Documentation
-├── *.go                   # Library source files
-├── go.mod                 # Go module definition
+│   ├── API.md            # API documentation
+│   ├── EXAMPLES.md       # Usage examples
+│   └── INTERNALS.md      # InnoDB internals
+├── *.go                   # Library source files (see ARCHITECTURE.md)
+├── doc.go                # Package documentation
+├── go.mod                # Go module definition
 ├── Makefile              # Build automation
+├── ARCHITECTURE.md       # Code organization guide
 ├── CLAUDE.md             # AI assistant context
 └── README.md             # This file
 ```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details on code organization and design decisions.
 
 ### Building and Testing
 
@@ -289,10 +296,15 @@ Contributions are welcome! Please ensure:
 
 This project is open source. Please check the license file for details.
 
+## Acknowledgments
+
+This project is inspired by and based on:
+- [innodb-java-reader](https://github.com/alibaba/innodb-java-reader) - Alibaba's Java library for parsing InnoDB files
+
 ## References
 
-- [InnoDB Page Structure Documentation](https://dev.mysql.com/doc/internals/en/innodb-page-structure.html)
 - [Jeremy Cole's InnoDB Ruby Tools](https://github.com/jeremycole/innodb_ruby)
+- [Nextgres OSS Embedded InnoDB](https://github.com/nextgres/oss-embedded-innodb)
 - MySQL/MariaDB InnoDB source code
 
 ## Support

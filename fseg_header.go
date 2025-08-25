@@ -1,3 +1,4 @@
+// fseg_header.go - File segment header parsing
 package goinnodb
 
 import "fmt"

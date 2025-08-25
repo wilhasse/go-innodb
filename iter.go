@@ -1,3 +1,4 @@
+// iter.go - Record iteration and traversal utilities
 package goinnodb
 
 import "fmt"

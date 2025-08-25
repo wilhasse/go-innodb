@@ -1,3 +1,4 @@
+// index_header.go - Index-specific header parsing within a page
 package goinnodb
 
 import "fmt"

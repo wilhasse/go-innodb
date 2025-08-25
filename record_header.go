@@ -1,3 +1,4 @@
+// record_header.go - Compact record format header parsing (5 bytes)
 package goinnodb
 
 import "fmt"

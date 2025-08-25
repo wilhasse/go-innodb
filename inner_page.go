@@ -1,3 +1,4 @@
+// inner_page.go - Base InnoDB page structure (16KB with FIL header/trailer)
 package goinnodb
 
 import "fmt"

@@ -1,6 +1,7 @@
+// types.go - Core type definitions and constants for InnoDB page parsing
 package goinnodb
 
-// Sizes and constants
+// Page size and structure constants
 const (
 	PageSize          = 16 * 1024 // 16384
 	FilHeaderSize     = 38
