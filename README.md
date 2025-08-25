@@ -191,21 +191,21 @@ go-innodb/
 │       └── main.go
 ├── docs/                  # Documentation
 │   ├── API.md            # API documentation
+│   ├── ARCHITECTURE.md   # Code organization guide
 │   ├── EXAMPLES.md       # Usage examples
 │   └── INTERNALS.md      # InnoDB internals
 ├── testdata/              # Test data files
 │   ├── users/            # Sample users table
 │   └── README.md         # Test data documentation
-├── *.go                   # Library source files (see ARCHITECTURE.md)
+├── *.go                   # Library source files (see docs/ARCHITECTURE.md)
 ├── doc.go                # Package documentation
 ├── go.mod                # Go module definition
 ├── Makefile              # Build automation
-├── ARCHITECTURE.md       # Code organization guide
 ├── CLAUDE.md             # AI assistant context
 └── README.md             # This file
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details on code organization and design decisions.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on code organization and design decisions.
 
 ### Building and Testing
 
