@@ -1,3 +1,4 @@
 innodb-java-reader
 /go-innodb
-users.ibd
+*.ibd
+!testdata/**/*.ibd

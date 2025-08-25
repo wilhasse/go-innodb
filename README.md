@@ -35,6 +35,16 @@ make install
 
 ## Usage
 
+### Quick Start with Test Data
+
+```bash
+# Build the tool
+make build
+
+# Try with included test data
+./go-innodb -file testdata/users/users.ibd -page 4 -records -v
+```
+
 ### Command-Line Tool
 
 The `go-innodb` command-line tool provides a user-friendly interface for analyzing InnoDB pages:
@@ -46,17 +56,14 @@ The `go-innodb` command-line tool provides a user-friendly interface for analyzi
 # Parse a specific page number
 ./go-innodb -file /path/to/table.ibd -page 3
 
-# Show records in a page
-./go-innodb -file /path/to/table.ibd -page 3 -records
+# Show records in a page with actual data (verbose mode)
+./go-innodb -file /path/to/table.ibd -page 3 -records -v
 
 # Output in JSON format
 ./go-innodb -file /path/to/table.ibd -page 3 -format json
 
 # Get a quick summary
 ./go-innodb -file /path/to/table.ibd -page 3 -format summary
-
-# Verbose output with all details
-./go-innodb -file /path/to/table.ibd -page 3 -v -records
 ```
 
 #### Command-Line Options
@@ -186,6 +193,9 @@ go-innodb/
 │   ├── API.md            # API documentation
 │   ├── EXAMPLES.md       # Usage examples
 │   └── INTERNALS.md      # InnoDB internals
+├── testdata/              # Test data files
+│   ├── users/            # Sample users table
+│   └── README.md         # Test data documentation
 ├── *.go                   # Library source files (see ARCHITECTURE.md)
 ├── doc.go                # Package documentation
 ├── go.mod                # Go module definition
