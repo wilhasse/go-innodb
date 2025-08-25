@@ -1,5 +1,5 @@
 // types.go - Core type definitions and constants for InnoDB page parsing
-package goinnodb
+package format
 
 // Page size and structure constants
 const (
@@ -36,11 +36,11 @@ const (
 type PageDirection uint16
 
 const (
+	DirNoDirection PageDirection = 0
 	DirLeft        PageDirection = 1
 	DirRight       PageDirection = 2
-	DirSameRec     PageDirection = 3
-	DirSamePage    PageDirection = 4
-	DirNoDirection PageDirection = 5
+	DirSamePage    PageDirection = 3
+	DirDescending  PageDirection = 4
 )
 
 type RecordType uint8

@@ -1,7 +1,10 @@
 // inner_page.go - Base InnoDB page structure (16KB with FIL header/trailer)
-package goinnodb
+package page
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/wilhasse/go-innodb/format"
+)
 
 // InnerPage = FIL header + body + FIL trailer (exactly 16 KiB)
 type InnerPage struct {
@@ -12,8 +15,8 @@ type InnerPage struct {
 }
 
 func NewInnerPage(pageNo uint32, page []byte) (*InnerPage, error) {
-	if len(page) != PageSize {
-		return nil, fmt.Errorf("expected %dB page, got %d", PageSize, len(page))
+	if len(page) != format.PageSize {
+		return nil, fmt.Errorf("expected %dB page, got %d", format.PageSize, len(page))
 	}
 	h, err := ParseFilHeader(page)
 	if err != nil {
@@ -29,4 +32,4 @@ func NewInnerPage(pageNo uint32, page []byte) (*InnerPage, error) {
 	return &InnerPage{PageNo: pageNo, FIL: h, Trailer: t, Data: page}, nil
 }
 
-func (ip *InnerPage) PageType() PageType { return ip.FIL.PageType }
+func (ip *InnerPage) PageType() format.PageType { return ip.FIL.PageType }

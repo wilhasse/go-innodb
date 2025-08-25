@@ -124,7 +124,7 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 
 		if showRecs {
 			fmt.Printf("\nRecords:\n")
-			records, err := indexPage.WalkRecords(maxRecs, true)
+			records, err := goinnodb.WalkRecords(indexPage, maxRecs, true)
 			if err != nil {
 				fmt.Printf("  Error walking records: %v\n", err)
 			} else {
@@ -227,7 +227,7 @@ func outputJSON(page *goinnodb.InnerPage, showRecs bool, maxRecs int) {
 			}
 
 			if showRecs {
-				if records, err := indexPage.WalkRecords(maxRecs, true); err == nil {
+				if records, err := goinnodb.WalkRecords(indexPage, maxRecs, true); err == nil {
 					recData := make([]map[string]interface{}, len(records))
 					for i, rec := range records {
 						recData[i] = map[string]interface{}{
@@ -306,10 +306,10 @@ func directionName(d goinnodb.PageDirection) string {
 		return "LEFT"
 	case goinnodb.DirRight:
 		return "RIGHT"
-	case goinnodb.DirSameRec:
-		return "SAME_REC"
 	case goinnodb.DirSamePage:
 		return "SAME_PAGE"
+	case goinnodb.DirDescending:
+		return "DESCENDING"
 	case goinnodb.DirNoDirection:
 		return "NO_DIRECTION"
 	default:

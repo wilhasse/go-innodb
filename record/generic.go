@@ -1,5 +1,5 @@
 // generic_record.go - Generic record structure with header and position
-package goinnodb
+package record
 
 // GenericRecord holds header and the position of the content (immediately after header).
 type GenericRecord struct {

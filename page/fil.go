@@ -1,7 +1,10 @@
 // fil.go - FIL header and trailer parsing for InnoDB pages
-package goinnodb
+package page
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/wilhasse/go-innodb/format"
+)
 
 const filNull uint32 = 0xFFFFFFFF
 
@@ -11,23 +14,23 @@ type FilHeader struct {
 	Prev       *uint32
 	Next       *uint32
 	LastModLSN uint64
-	PageType   PageType
+	PageType   format.PageType
 	FlushLSN   uint64
 	SpaceID    uint32
 }
 
 func ParseFilHeader(p []byte) (FilHeader, error) {
-	if len(p) < PageSize {
+	if len(p) < format.PageSize {
 		return FilHeader{}, fmt.Errorf("short page: %d", len(p))
 	}
-	chk, _ := be32(p, 0)
-	pg, _ := be32(p, 4)
-	prev, _ := be32(p, 8)
-	next, _ := be32(p, 12)
-	lsn, _ := be64(p, 16)
-	pt, _ := be16(p, 24)
-	flush, _ := be64(p, 26)
-	space, _ := be32(p, 34)
+	chk, _ := format.Be32(p, 0)
+	pg, _ := format.Be32(p, 4)
+	prev, _ := format.Be32(p, 8)
+	next, _ := format.Be32(p, 12)
+	lsn, _ := format.Be64(p, 16)
+	pt, _ := format.Be16(p, 24)
+	flush, _ := format.Be64(p, 26)
+	space, _ := format.Be32(p, 34)
 	var prevPtr, nextPtr *uint32
 	if prev != filNull {
 		prevPtr = &prev
@@ -37,7 +40,7 @@ func ParseFilHeader(p []byte) (FilHeader, error) {
 	}
 	return FilHeader{
 		Checksum: chk, PageNumber: pg, Prev: prevPtr, Next: nextPtr,
-		LastModLSN: lsn, PageType: PageType(pt), FlushLSN: flush, SpaceID: space,
+		LastModLSN: lsn, PageType: format.PageType(pt), FlushLSN: flush, SpaceID: space,
 	}, nil
 }
 
@@ -47,11 +50,11 @@ type FilTrailer struct {
 }
 
 func ParseFilTrailer(p []byte) (FilTrailer, error) {
-	if len(p) < FilTrailerSize {
+	if len(p) < format.FilTrailerSize {
 		return FilTrailer{}, fmt.Errorf("short trailer")
 	}
-	off := PageSize - FilTrailerSize
-	chk, _ := be32(p, off+0)
-	lsn, _ := be32(p, off+4)
+	off := format.PageSize - format.FilTrailerSize
+	chk, _ := format.Be32(p, off+0)
+	lsn, _ := format.Be32(p, off+4)
 	return FilTrailer{Checksum: chk, Low32LSN: lsn}, nil
 }
