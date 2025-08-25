@@ -7,7 +7,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	goinnodb "github.com/cslog/go-innodb"
+	goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func main() {

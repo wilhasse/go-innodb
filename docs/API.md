@@ -270,7 +270,7 @@ import (
     "fmt"
     "log"
     "os"
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func analyzeTablespace(filename string) error {

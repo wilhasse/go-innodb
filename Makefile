@@ -93,7 +93,7 @@ deps:
 init:
 	@if [ ! -f go.mod ]; then \
 		echo "Initializing go module..."; \
-		$(GOMOD) init github.com/cslog/$(PACKAGE); \
+		$(GOMOD) init github.com/wilhasse/$(PACKAGE); \
 	else \
 		echo "go.mod already exists"; \
 	fi

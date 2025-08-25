@@ -1,3 +1,3 @@
-module github.com/cslog/go-innodb
+module github.com/wilhasse/go-innodb
 
 go 1.20

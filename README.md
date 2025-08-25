@@ -20,7 +20,7 @@ A Go library and command-line tool for parsing and analyzing InnoDB database pag
 
 ```bash
 # Clone the repository
-git clone https://github.com/cslog/go-innodb.git
+git clone https://github.com/wilhasse/go-innodb.git
 cd go-innodb
 
 # Build the library and CLI tool
@@ -78,7 +78,7 @@ package main
 import (
     "fmt"
     "os"
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func main() {
@@ -297,4 +297,4 @@ This project is open source. Please check the license file for details.
 
 ## Support
 
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/cslog/go-innodb).
+For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/wilhasse/go-innodb).

@@ -91,7 +91,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func main() {
@@ -129,7 +129,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func analyzeIndexPage(filename string, pageNum uint32) {
@@ -191,7 +191,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func walkPageRecords(filename string, pageNum uint32) {
@@ -261,7 +261,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func followPageChain(filename string, startPage uint32, maxPages int) {
@@ -322,7 +322,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func findDeletedRecords(filename string, startPage, endPage uint32) {
@@ -398,7 +398,7 @@ import (
     "log"
     "os"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 type PageStats struct {
@@ -503,7 +503,7 @@ import (
     "os"
     "strings"
     
-    goinnodb "github.com/cslog/go-innodb"
+    goinnodb "github.com/wilhasse/go-innodb"
 )
 
 func safePageRead(filename string, pageNum uint32) {
