@@ -86,18 +86,17 @@ static unsigned long ilog2_ul(unsigned long v) {
     return s;
 }
 
-// Convert physical page size to correct zip shift (Oracle engineers' guidance)
-// InnoDB formula: zip_size_bytes = 1 << (10 + ssize)
-// So ssize is the exponent, NOT the page size itself
-static inline uint32_t zip_shift_from_bytes(size_t z) {
-    switch (z) {
-        case 1024:  return 0; // 1KB -> ssize=0 (1 << (10+0) = 1024)
-        case 2048:  return 1; // 2KB -> ssize=1 (1 << (10+1) = 2048)
-        case 4096:  return 2; // 4KB -> ssize=2 (1 << (10+2) = 4096)  
-        case 8192:  return 3; // 8KB -> ssize=3 (1 << (10+3) = 8192)
-        case 16384: return 4; // 16KB -> ssize=4 (uncompressed/legacy)
-        default:    return 0; // Invalid => let caller handle
+// Oracle engineers' CORRECT ssize calculation  
+// ssize = #bit-shifts from 512 to reach 'physical'
+// Formula: 512 << ssize = physical_size
+static inline uint32_t page_size_to_ssize(size_t physical) {
+    if (physical < 1024 || physical > 16384 || (physical & (physical - 1)) != 0) {
+        return 0; // reject non power-of-two or out-of-range sizes
     }
+    // log2(physical) - log2(512)  ==>  log2(physical) - 9
+    unsigned s = 0;
+    while ((512u << s) < physical) ++s;
+    return s; // 8KB => 4 (CORRECT!)
 }
 
 
@@ -144,27 +143,22 @@ extern "C" int innodb_zip_decompress(
         return 0;
     }
     
-    // Oracle engineers' patch: Check ONLY page type, not physical < logical heuristic
-    // Many non-index pages in compressed tablespaces are 8K but not actually page-zip compressed
+    // Follow working Percona approach: decompress INDEX pages in compressed tablespaces
     const uint16_t page_type = read_uint16_be(page_data + FIL_PAGE_TYPE_OFFSET);
-    const bool is_compressed_page = (page_type == FIL_PAGE_COMPRESSED) ||
-                                   (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED);
     
-    printf("[PAGE-DEBUG] Page type: %u, is_compressed: %s\n", 
-           page_type, is_compressed_page ? "YES (14 or 16)" : "NO");
+    printf("[PAGE-DEBUG] Page type: %u (FIL_PAGE_INDEX=%u)\n", page_type, FIL_PAGE_INDEX);
     fflush(stdout);
     
-    if (!is_compressed_page) {
-        // Not a compressed page type, copy as-is into the 16K buffer
-        printf("[PAGE-DEBUG] Not FIL_PAGE_COMPRESSED, copying raw data to 16K buffer\n");
+    // Only attempt to decompress if it's a real index page (like working Percona code)
+    if (page_type != FIL_PAGE_INDEX) {
+        // Not an index page => just copy the raw page data  
+        printf("[PAGE-DEBUG] Not FIL_PAGE_INDEX, copying raw data\n");
         fflush(stdout);
-        // Clear the entire 16KB buffer first, then copy the physical page data
-        memset(dst, 0, logical);
-        memcpy(dst, src, physical);  // Copy physical size into logical buffer
+        memcpy(dst, src, physical);
         return 0;
     }
     
-    printf("[PAGE-DEBUG] FIL_PAGE_COMPRESSED detected - attempting decompression\n");
+    printf("[PAGE-DEBUG] FIL_PAGE_INDEX detected - attempting decompression\n");
     fflush(stdout);
     
     // This is a compressed INDEX page - attempt decompression (Percona's approach)
@@ -191,20 +185,34 @@ extern "C" int innodb_zip_decompress(
     page_zip.data = reinterpret_cast<page_zip_t*>(
         const_cast<unsigned char*>(static_cast<const unsigned char*>(src) + FIL_PAGE_DATA)
     );
-    page_zip.ssize = zip_shift_from_bytes(physical);
+    page_zip.ssize = page_size_to_ssize(physical);
     
-    // Validate that we got a sensible physical size (ssize=0 is valid for 1KB)
-    if (physical != 1024 && physical != 2048 && physical != 4096 && 
-        physical != 8192 && physical != 16384) {
-        // Invalid physical page size for compression  
+    // Validate that we got a sensible ssize (minimum is 1 for 1KB)
+    if (page_zip.ssize == 0 || page_zip.ssize > 5) {
+        // Invalid ssize for compression  
         free(temp);
         return -3;
     }
     
+    // Oracle engineers' sanity check: verify ssize calculation is correct
+    size_t expected_physical = static_cast<size_t>(512u) << page_zip.ssize;
+    if (expected_physical != physical) {
+        fprintf(stderr, "[ASSERT] ssize mismatch: expect=%zu actual_physical=%zu (ssize=%u)\n",
+                expected_physical, physical, page_zip.ssize);
+        free(temp);
+        return -4;
+    }
+    
+    // Oracle engineers' quick sanity checks before calling decompressor
+    uint16_t type = read_uint16_be(static_cast<const unsigned char*>(src) + FIL_PAGE_TYPE_OFFSET);
+    fprintf(stderr, "page_type=%u (expect 17855 for INDEX), ssize=%u (8KB should be 4)\n",
+            (unsigned)type, (unsigned)page_zip.ssize);
+    fflush(stderr);
+    
     // Debug output to verify Oracle fixes are applied
     printf("[ORACLE-DEBUG] Before decompression:\n");
     printf("[ORACLE-DEBUG]   page_zip.data = %p (should be src + 38)\n", page_zip.data);
-    printf("[ORACLE-DEBUG]   page_zip.ssize = %u (should be 3 for 8KB)\n", page_zip.ssize);
+    printf("[ORACLE-DEBUG]   page_zip.ssize = %u (should be 4 for 8KB)\n", page_zip.ssize);
     printf("[ORACLE-DEBUG]   srv_page_size = %lu (should be 16384)\n", srv_page_size);
     printf("[ORACLE-DEBUG]   univ_page_size logical/physical = %lu/%lu\n", 
            univ_page_size.logical(), univ_page_size.physical());
