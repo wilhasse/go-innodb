@@ -37,6 +37,26 @@ build-tool:
 	@echo "Building $(BINARY)..."
 	@$(GOBUILD) $(BUILDFLAGS) -o $(BINARY) ./cmd/$(BINARY)/
 
+# Build with compression support (requires cgo and libinnodb_zipdecompress.a)
+build-compressed:
+	@echo "Building with compression support..."
+	@if [ ! -f lib/libinnodb_zipdecompress.a ]; then \
+		echo "Error: lib/libinnodb_zipdecompress.a not found!"; \
+		echo "Please add the InnoDB compression library to enable this feature."; \
+		exit 1; \
+	fi
+	@echo "Building C++ shim library..."
+	@$(MAKE) -C lib
+	@echo "Building Go code with cgo..."
+	@CGO_ENABLED=1 $(GOBUILD) $(BUILDFLAGS) -tags cgo ./...
+	@CGO_ENABLED=1 $(GOBUILD) $(BUILDFLAGS) -tags cgo -o $(BINARY) ./cmd/$(BINARY)/
+	@echo "✓ Built with compression support"
+
+# Build compression library only
+compression-lib:
+	@echo "Building compression shim library..."
+	@$(MAKE) -C lib
+
 # Install the tool to $GOPATH/bin
 install:
 	@echo "Installing $(BINARY)..."
@@ -48,6 +68,7 @@ clean:
 	@$(GOCLEAN)
 	@rm -f $(BINARY)
 	@rm -f coverage.out coverage.html
+	@if [ -d lib ]; then $(MAKE) -C lib clean 2>/dev/null || true; fi
 
 # Run tests
 test:
