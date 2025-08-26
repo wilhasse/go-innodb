@@ -72,10 +72,6 @@ static uint32_t page_size_to_ssize(size_t physical) {
     }
 }
 
-// Test function for debugging (can be removed in production)
-extern "C" int test_c_linking() {
-    return 42;
-}
 
 // Main decompression function exposed to Go - following Percona's approach
 extern "C" int innodb_zip_decompress(
