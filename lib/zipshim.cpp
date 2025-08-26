@@ -9,11 +9,35 @@ extern "C" {
 #include <stdlib.h>
 }
 
+// Simple page_size_t implementation (minimal version for our needs)
+class page_size_t {
+public:
+    page_size_t(unsigned long logical, unsigned long physical, bool compressed) 
+        : m_logical(logical), m_physical(physical), m_compressed(compressed) {}
+    
+    void copy_from(const page_size_t& other) {
+        m_logical = other.m_logical;
+        m_physical = other.m_physical; 
+        m_compressed = other.m_compressed;
+    }
+    
+    unsigned long logical() const { return m_logical; }
+    unsigned long physical() const { return m_physical; }
+    
+private:
+    unsigned long m_logical;
+    unsigned long m_physical;
+    bool m_compressed;
+};
+
 // Access to InnoDB globals (defined in mysql_stubs.cpp)
 extern "C" {
     extern unsigned long srv_page_size;
     extern unsigned long srv_page_size_shift;
 }
+
+// Global page size object (Oracle engineers' guidance: must be set correctly for compression)
+page_size_t univ_page_size(16384, 16384, false);
 
 // Forward declarations for InnoDB types and functions
 // These would normally come from MySQL headers, but we'll define minimal interfaces
@@ -29,7 +53,10 @@ typedef void page_zip_t;
 
 // InnoDB page types (from fil0fil.h)
 #define FIL_PAGE_TYPE_OFFSET 24
-#define FIL_PAGE_INDEX 17855  // B-tree node
+#define FIL_PAGE_INDEX 17855              // B-tree node
+#define FIL_PAGE_COMPRESSED 14            // Compressed page
+#define FIL_PAGE_COMPRESSED_AND_ENCRYPTED 16  // Compressed and encrypted page
+#define FIL_PAGE_DATA 38                  // Start of page data (after 38-byte FIL header)
 
 // External functions from libinnodb_zipdecompress.a  
 // The actual C++ function signature (mangled name: _Z23page_zip_decompress_lowP14page_zip_des_tPhb)
@@ -59,16 +86,17 @@ static unsigned long ilog2_ul(unsigned long v) {
     return s;
 }
 
-// Convert physical page size to shift size (ssize) following Oracle's approach
-// This matches InnoDB's internal page_size_to_ssize() function
-static uint32_t page_size_to_ssize(size_t physical) {
-    switch (physical) {
-        case 1024:  return 1;  // 1KB -> ssize=1
-        case 2048:  return 2;  // 2KB -> ssize=2  
-        case 4096:  return 4;  // 4KB -> ssize=4
-        case 8192:  return 8;  // 8KB -> ssize=8
-        case 16384: return 16; // 16KB -> ssize=16 (uncompressed)
-        default:    return 0;  // Invalid size
+// Convert physical page size to correct zip shift (Oracle engineers' guidance)
+// InnoDB formula: zip_size_bytes = 1 << (10 + ssize)
+// So ssize is the exponent, NOT the page size itself
+static inline uint32_t zip_shift_from_bytes(size_t z) {
+    switch (z) {
+        case 1024:  return 0; // 1KB -> ssize=0 (1 << (10+0) = 1024)
+        case 2048:  return 1; // 2KB -> ssize=1 (1 << (10+1) = 2048)
+        case 4096:  return 2; // 4KB -> ssize=2 (1 << (10+2) = 4096)  
+        case 8192:  return 3; // 8KB -> ssize=3 (1 << (10+3) = 8192)
+        case 16384: return 4; // 16KB -> ssize=4 (uncompressed/legacy)
+        default:    return 0; // Invalid => let caller handle
     }
 }
 
@@ -80,7 +108,12 @@ extern "C" int innodb_zip_decompress(
     void*       dst,        // Output buffer (16KB)
     size_t      logical)    // Logical page size (usually 16384)
 {
+    printf("[ENTRY-DEBUG] innodb_zip_decompress called: physical=%zu, logical=%zu\n", physical, logical);
+    fflush(stdout);
+    
     if (!src || !dst) {
+        printf("[ENTRY-DEBUG] Invalid pointers\n");
+        fflush(stdout);
         return -1;
     }
     
@@ -89,9 +122,14 @@ extern "C" int innodb_zip_decompress(
         return -2;
     }
     
-    // Oracle's approach: keep InnoDB globals consistent for this call
+    // Oracle engineers' fix #3: Set InnoDB globals correctly for compression
+    // srv_page_size and srv_page_size_shift must reflect LOGICAL size (16KB)
     srv_page_size = static_cast<unsigned long>(logical);
     srv_page_size_shift = static_cast<unsigned long>(ilog2_ul(static_cast<unsigned long>(logical)));
+    
+    // univ_page_size must be set with correct logical/physical split for compressed tablespaces
+    bool is_compressed = (physical < logical);
+    univ_page_size.copy_from(page_size_t(logical, physical, is_compressed));
     
     // Clear output buffer first
     memset(dst, 0, logical);
@@ -106,13 +144,27 @@ extern "C" int innodb_zip_decompress(
         return 0;
     }
     
-    // Check page type - only decompress INDEX pages (Percona's approach)
-    uint16_t page_type = read_uint16_be(page_data + FIL_PAGE_TYPE_OFFSET);
-    if (page_type != FIL_PAGE_INDEX) {
-        // Not an index page, just copy the raw data
+    // Oracle engineers' fix #4: Don't gate strictly on FIL_PAGE_INDEX
+    // Compressed pages may be tagged as FIL_PAGE_COMPRESSED (14) or FIL_PAGE_COMPRESSED_AND_ENCRYPTED (16)
+    const uint16_t page_type = read_uint16_be(page_data + FIL_PAGE_TYPE_OFFSET);
+    const bool looks_zipped = (physical < logical) || 
+                             (page_type == FIL_PAGE_COMPRESSED) ||
+                             (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED);
+    
+    printf("[PAGE-DEBUG] Page type: %u, physical: %zu < logical: %zu = %s\n", 
+           page_type, physical, logical, looks_zipped ? "COMPRESSED" : "NOT COMPRESSED");
+    fflush(stdout);
+    
+    if (!looks_zipped) {
+        // Not compressed, just copy the raw data
+        printf("[PAGE-DEBUG] Page not compressed, copying raw data\n");
+        fflush(stdout);
         memcpy(dst, src, physical);
         return 0;
     }
+    
+    printf("[PAGE-DEBUG] Page appears compressed - attempting decompression\n");
+    fflush(stdout);
     
     // This is a compressed INDEX page - attempt decompression (Percona's approach)
     
@@ -134,18 +186,35 @@ extern "C" int innodb_zip_decompress(
     // Set up the page_zip descriptor following Percona's patterns
     page_zip_des_t page_zip{};
     page_zip_des_init_simple(&page_zip);
-    page_zip.data = reinterpret_cast<page_zip_t*>(const_cast<void*>(src));
-    page_zip.ssize = page_size_to_ssize(physical);
+    // Oracle engineers' fix: point to compressed payload after FIL header, not page start
+    page_zip.data = reinterpret_cast<page_zip_t*>(
+        const_cast<unsigned char*>(static_cast<const unsigned char*>(src) + FIL_PAGE_DATA)
+    );
+    page_zip.ssize = zip_shift_from_bytes(physical);
     
-    if (page_zip.ssize == 0) {
-        // Invalid physical page size for compression
+    // Validate that we got a sensible physical size (ssize=0 is valid for 1KB)
+    if (physical != 1024 && physical != 2048 && physical != 4096 && 
+        physical != 8192 && physical != 16384) {
+        // Invalid physical page size for compression  
         free(temp);
         return -3;
     }
     
+    // Debug output to verify Oracle fixes are applied
+    printf("[ORACLE-DEBUG] Before decompression:\n");
+    printf("[ORACLE-DEBUG]   page_zip.data = %p (should be src + 38)\n", page_zip.data);
+    printf("[ORACLE-DEBUG]   page_zip.ssize = %u (should be 3 for 8KB)\n", page_zip.ssize);
+    printf("[ORACLE-DEBUG]   srv_page_size = %lu (should be 16384)\n", srv_page_size);
+    printf("[ORACLE-DEBUG]   univ_page_size logical/physical = %lu/%lu\n", 
+           univ_page_size.logical(), univ_page_size.physical());
+    fflush(stdout);
+    
     // Attempt decompression using InnoDB's low-level function
     // This follows the exact pattern used by Percona's successful implementation
     bool ok = page_zip_decompress_low(&page_zip, aligned_temp, true);
+    
+    printf("[ORACLE-DEBUG] page_zip_decompress_low returned: %s\n", ok ? "SUCCESS" : "FAILED");
+    fflush(stdout);
     
     if (ok) {
         // Copy decompressed data to output buffer
