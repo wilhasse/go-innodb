@@ -29,24 +29,24 @@ func IsPageCompressed(data []byte) bool {
 	if len(data) < 38 {
 		return false
 	}
-	
+
 	// Check FIL header for compression indicators
 	// Compressed pages have different header patterns
-	
+
 	// Simple heuristic: if page size is less than 16KB and has valid FIL header
 	if len(data) < LogicalPageSize {
 		// Could be compressed
 		// Additional checks would go here
 		return true
 	}
-	
+
 	// Call C function for more sophisticated check
 	// (though our simple implementation just returns 0 for now)
 	result := C.innodb_is_page_compressed(
 		unsafe.Pointer(&data[0]),
 		C.size_t(len(data)),
 	)
-	
+
 	return result != 0
 }
 
@@ -66,14 +66,14 @@ func DecompressPage(src []byte, physicalSize int) ([]byte, error) {
 	if !validSize {
 		return nil, fmt.Errorf("invalid physical page size: %d", physicalSize)
 	}
-	
+
 	if len(src) < physicalSize {
 		return nil, fmt.Errorf("source data too small: %d < %d", len(src), physicalSize)
 	}
-	
+
 	// Allocate output buffer for logical page
 	dst := make([]byte, LogicalPageSize)
-	
+
 	// Call the decompression function
 	rc := C.innodb_zip_decompress(
 		unsafe.Pointer(&src[0]),
@@ -81,7 +81,7 @@ func DecompressPage(src []byte, physicalSize int) ([]byte, error) {
 		unsafe.Pointer(&dst[0]),
 		C.size_t(LogicalPageSize),
 	)
-	
+
 	switch rc {
 	case 0:
 		return dst, nil
@@ -103,12 +103,12 @@ func GetCompressedSize(page []byte, physicalSize int) int {
 	if len(page) < physicalSize {
 		return 0
 	}
-	
+
 	size := C.innodb_get_compressed_size(
 		unsafe.Pointer(&page[0]),
 		C.size_t(physicalSize),
 	)
-	
+
 	return int(size)
 }
 
@@ -119,12 +119,12 @@ func TryDecompressPage(data []byte) ([]byte, bool, error) {
 	if len(data) == LogicalPageSize {
 		return data, false, nil
 	}
-	
+
 	// Try to detect compression
 	if !IsPageCompressed(data) {
 		return data, false, nil
 	}
-	
+
 	// Try different physical sizes
 	for _, size := range CompressedPageSizes {
 		if len(data) >= size {
@@ -134,7 +134,7 @@ func TryDecompressPage(data []byte) ([]byte, bool, error) {
 			}
 		}
 	}
-	
+
 	// Couldn't decompress, return original
 	return data, false, fmt.Errorf("unable to decompress page")
 }

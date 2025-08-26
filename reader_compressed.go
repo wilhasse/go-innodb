@@ -10,17 +10,17 @@ import (
 
 // CompressedPageReader extends PageReader with compression support
 type CompressedPageReader struct {
-	r                  io.ReaderAt
+	r                   io.ReaderAt
 	enableDecompression bool
-	physicalPageSize   int // Physical page size for compressed tables (0 = auto-detect)
+	physicalPageSize    int // Physical page size for compressed tables (0 = auto-detect)
 }
 
 // NewCompressedPageReader creates a reader with compression support
 func NewCompressedPageReader(r io.ReaderAt) *CompressedPageReader {
 	return &CompressedPageReader{
-		r:                  r,
+		r:                   r,
 		enableDecompression: true,
-		physicalPageSize:   0, // Auto-detect
+		physicalPageSize:    0, // Auto-detect
 	}
 }
 
@@ -48,14 +48,14 @@ func (pr *CompressedPageReader) ReadPage(pageNo uint32) (*page.InnerPage, error)
 	if pr.physicalPageSize > 0 && pr.physicalPageSize < format.PageSize {
 		readSize = pr.physicalPageSize
 	}
-	
+
 	// Read the page data
 	buf := make([]byte, readSize)
 	off := int64(pageNo) * int64(readSize)
 	if _, err := pr.r.ReadAt(buf, off); err != nil {
 		return nil, fmt.Errorf("read page %d: %w", pageNo, err)
 	}
-	
+
 	// Try to decompress if enabled and page appears compressed
 	if pr.enableDecompression {
 		decompressed, wasCompressed, err := pr.tryDecompress(buf)
@@ -67,7 +67,7 @@ func (pr *CompressedPageReader) ReadPage(pageNo uint32) (*page.InnerPage, error)
 			buf = decompressed
 		}
 	}
-	
+
 	// Parse the page (now guaranteed to be logical size if decompressed)
 	return page.NewInnerPage(pageNo, buf)
 }
@@ -85,20 +85,20 @@ func (pr *CompressedPageReader) ReadCompressedPage(pageNo uint32, physicalSize i
 	if !validSize {
 		return nil, fmt.Errorf("invalid physical page size: %d", physicalSize)
 	}
-	
+
 	// Read compressed data
 	buf := make([]byte, physicalSize)
 	off := int64(pageNo) * int64(physicalSize)
 	if _, err := pr.r.ReadAt(buf, off); err != nil {
 		return nil, fmt.Errorf("read compressed page %d: %w", pageNo, err)
 	}
-	
+
 	// Decompress
 	decompressed, err := DecompressPage(buf, physicalSize)
 	if err != nil {
 		return nil, fmt.Errorf("decompress page %d: %w", pageNo, err)
 	}
-	
+
 	// Parse decompressed page
 	return page.NewInnerPage(pageNo, decompressed)
 }
@@ -115,7 +115,7 @@ func (pr *CompressedPageReader) tryDecompress(data []byte) ([]byte, bool, error)
 			return data, false, err
 		}
 	}
-	
+
 	// Otherwise, try auto-detection
 	return TryDecompressPage(data)
 }

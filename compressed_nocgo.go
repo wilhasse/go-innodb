@@ -1,4 +1,5 @@
 // compressed_nocgo.go - Stub implementation when cgo is not available
+//go:build !cgo
 // +build !cgo
 
 package goinnodb
@@ -19,7 +20,7 @@ func IsPageCompressed(data []byte) bool {
 	if len(data) >= LogicalPageSize {
 		return false
 	}
-	
+
 	// Basic check: compressed pages are smaller than 16KB
 	// and should be one of the valid compressed sizes
 	for _, size := range CompressedPageSizes {
@@ -27,7 +28,7 @@ func IsPageCompressed(data []byte) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
