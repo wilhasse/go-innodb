@@ -1,51 +1,37 @@
-# Makefile for building the InnoDB compression shim library
+# Makefile for building the InnoDB decompression library
+# This provides a minimal library for decompressing InnoDB pages without MySQL dependencies
 
 CXX = g++
 CXXFLAGS = -fPIC -O2 -Wall -std=c++11
 LDFLAGS = -shared
 
-# Output library name
-TARGET = libzipshim.so
-
-# Source files
-SOURCES = zipshim.cpp mysql_stubs.cpp
-
-# Object files
-OBJECTS = $(SOURCES:.cpp=.o)
-
-# InnoDB library
+# InnoDB static library (from MySQL/Percona build)
 INNODB_LIB = libinnodb_zipdecompress.a
 
-# Build the shared library
-# Note: We need to include the whole static library to resolve all symbols
+# Decompression library
+TARGET = libinnodb_decompress.so
+SOURCES = innodb_decompress.cpp mysql_stubs.cpp
+OBJECTS = $(SOURCES:.cpp=.o)
+
+# Default target
+all: $(TARGET)
+
+# Build the decompression library
 $(TARGET): $(OBJECTS)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) -Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive -lz -llz4 -lstdc++
+	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) \
+		-Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive \
+		-lz -llz4
 
 # Compile source files
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Build static library (alternative)
-static: $(OBJECTS)
-	ar rcs libzipshim.a $(OBJECTS)
-
-# New minimal decompression library
-DECOMPRESS_TARGET = libinnodb_decompress.so
-DECOMPRESS_SOURCES = innodb_decompress_v3.cpp mysql_stubs.cpp
-DECOMPRESS_OBJECTS = innodb_decompress_v3.o mysql_stubs.o
-
-# Build the minimal decompression library
-# Include the static library directly for standalone operation
-$(DECOMPRESS_TARGET): $(DECOMPRESS_OBJECTS)
-	$(CXX) $(LDFLAGS) -o $@ $(DECOMPRESS_OBJECTS) -Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive -lz -llz4
-
-# Build both libraries
-all: $(TARGET) $(DECOMPRESS_TARGET)
-
-# Build only the minimal decompression library
-decompress: $(DECOMPRESS_TARGET)
-
+# Clean build artifacts
 clean:
-	rm -f $(OBJECTS) $(TARGET) libzipshim.a $(DECOMPRESS_OBJECTS) $(DECOMPRESS_TARGET)
+	rm -f $(OBJECTS) $(TARGET)
 
-.PHONY: clean static all decompress
+# Install (optional)
+install: $(TARGET)
+	@echo "Copy $(TARGET) to your library path or set LD_LIBRARY_PATH"
+
+.PHONY: all clean install
