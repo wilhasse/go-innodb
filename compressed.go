@@ -23,6 +23,9 @@ const (
 // CompressedPageSizes lists the valid physical sizes for compressed pages
 var CompressedPageSizes = []int{1024, 2048, 4096, 8192}
 
+// AllValidPageSizes includes both compressed and uncompressed sizes
+var AllValidPageSizes = []int{1024, 2048, 4096, 8192, 16384}
+
 // IsPageCompressed checks if a page appears to be compressed
 // This is a heuristic check based on page header patterns
 func IsPageCompressed(data []byte) bool {

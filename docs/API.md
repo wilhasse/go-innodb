@@ -117,6 +117,7 @@ page, err = reader.ReadPage(4)
 - `2048` (2K) - 8:1 compression ratio  
 - `4096` (4K) - 4:1 compression ratio
 - `8192` (8K) - 2:1 compression ratio
+- `16384` (16K) - Uncompressed pages (ROW_FORMAT=DYNAMIC/COMPACT)
 
 **Requirements:**
 - Compression support must be built with `./build_compression.sh`

@@ -13,7 +13,7 @@ func main() {
 	var (
 		fileName = flag.String("file", "", "InnoDB data file (.ibd)")
 		pageNo   = flag.Int("page", 4, "Page number to read")
-		keySize  = flag.Int("key-block-size", 0, "KEY_BLOCK_SIZE in KB (1, 2, 4, 8) or 0 for auto")
+		keySize  = flag.Int("key-block-size", 0, "KEY_BLOCK_SIZE in KB (1, 2, 4, 8, 16) or 0 for auto")
 	)
 	flag.Parse()
 
@@ -40,7 +40,11 @@ func main() {
 			fmt.Printf("Error setting page size: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Using KEY_BLOCK_SIZE=%dK (physical size: %d bytes)\n", *keySize, physicalSize)
+		if *keySize == 16 {
+			fmt.Printf("Using uncompressed 16K pages (physical size: %d bytes)\n", physicalSize)
+		} else {
+			fmt.Printf("Using KEY_BLOCK_SIZE=%dK (physical size: %d bytes)\n", *keySize, physicalSize)
+		}
 	} else {
 		fmt.Println("Auto-detecting compression...")
 	}

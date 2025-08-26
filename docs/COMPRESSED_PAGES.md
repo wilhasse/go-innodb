@@ -254,12 +254,13 @@ if innodb.IsPageCompressed(pageData) {
 
 InnoDB compressed tables use these KEY_BLOCK_SIZE values:
 
-| KEY_BLOCK_SIZE | Physical Page Size | Compression Ratio |
-|----------------|-------------------|-------------------|
-| 1K | 1024 bytes | 16:1 |
-| 2K | 2048 bytes | 8:1 |
-| 4K | 4096 bytes | 4:1 |
-| 8K | 8192 bytes | 2:1 |
+| KEY_BLOCK_SIZE | Physical Page Size | Compression Ratio | Table Format |
+|----------------|-------------------|-------------------|--------------|
+| 1K | 1024 bytes | 16:1 | ROW_FORMAT=COMPRESSED |
+| 2K | 2048 bytes | 8:1 | ROW_FORMAT=COMPRESSED |
+| 4K | 4096 bytes | 4:1 | ROW_FORMAT=COMPRESSED |
+| 8K | 8192 bytes | 2:1 | ROW_FORMAT=COMPRESSED |
+| 16K | 16384 bytes | 1:1 (uncompressed) | ROW_FORMAT=DYNAMIC/COMPACT |
 
 ## How Compression Works
 

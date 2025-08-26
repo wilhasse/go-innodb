@@ -24,18 +24,18 @@ func NewCompressedPageReader(r io.ReaderAt) *CompressedPageReader {
 	}
 }
 
-// SetPhysicalPageSize sets the physical page size for compressed tables
-// Valid sizes are 1024, 2048, 4096, 8192 bytes
+// SetPhysicalPageSize sets the physical page size for tables
+// Valid sizes are 1024, 2048, 4096, 8192 (compressed) or 16384 (uncompressed) bytes
 func (pr *CompressedPageReader) SetPhysicalPageSize(size int) error {
 	validSize := false
-	for _, s := range CompressedPageSizes {
+	for _, s := range AllValidPageSizes {
 		if size == s {
 			validSize = true
 			break
 		}
 	}
 	if !validSize && size != 0 {
-		return fmt.Errorf("invalid physical page size: %d", size)
+		return fmt.Errorf("invalid physical page size: %d (valid: 1024, 2048, 4096, 8192, 16384)", size)
 	}
 	pr.physicalPageSize = size
 	return nil
@@ -56,6 +56,12 @@ func (pr *CompressedPageReader) ReadPage(pageNo uint32) (*page.InnerPage, error)
 		return nil, fmt.Errorf("read page %d: %w", pageNo, err)
 	}
 
+	// Handle 16K uncompressed pages directly
+	if readSize == format.PageSize {
+		// Reading a full 16K page - no decompression needed
+		return page.NewInnerPage(pageNo, buf)
+	}
+
 	// Try to decompress if enabled and page appears compressed
 	if pr.enableDecompression {
 		decompressed, wasCompressed, err := pr.tryDecompress(buf)
@@ -63,6 +69,8 @@ func (pr *CompressedPageReader) ReadPage(pageNo uint32) (*page.InnerPage, error)
 			// Log warning but continue with original data
 			// Some pages might not be compressed even in compressed tables
 			fmt.Printf("Warning: decompression failed for page %d: %v\n", pageNo, err)
+			// For smaller pages that failed decompression, this is an error
+			return nil, fmt.Errorf("expected %dB page, got %d", format.PageSize, len(buf))
 		} else if wasCompressed {
 			buf = decompressed
 		}
