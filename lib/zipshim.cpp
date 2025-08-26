@@ -144,26 +144,27 @@ extern "C" int innodb_zip_decompress(
         return 0;
     }
     
-    // Oracle engineers' fix #4: Don't gate strictly on FIL_PAGE_INDEX
-    // Compressed pages may be tagged as FIL_PAGE_COMPRESSED (14) or FIL_PAGE_COMPRESSED_AND_ENCRYPTED (16)
+    // Oracle engineers' patch: Check ONLY page type, not physical < logical heuristic
+    // Many non-index pages in compressed tablespaces are 8K but not actually page-zip compressed
     const uint16_t page_type = read_uint16_be(page_data + FIL_PAGE_TYPE_OFFSET);
-    const bool looks_zipped = (physical < logical) || 
-                             (page_type == FIL_PAGE_COMPRESSED) ||
-                             (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED);
+    const bool is_compressed_page = (page_type == FIL_PAGE_COMPRESSED) ||
+                                   (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED);
     
-    printf("[PAGE-DEBUG] Page type: %u, physical: %zu < logical: %zu = %s\n", 
-           page_type, physical, logical, looks_zipped ? "COMPRESSED" : "NOT COMPRESSED");
+    printf("[PAGE-DEBUG] Page type: %u, is_compressed: %s\n", 
+           page_type, is_compressed_page ? "YES (14 or 16)" : "NO");
     fflush(stdout);
     
-    if (!looks_zipped) {
-        // Not compressed, just copy the raw data
-        printf("[PAGE-DEBUG] Page not compressed, copying raw data\n");
+    if (!is_compressed_page) {
+        // Not a compressed page type, copy as-is into the 16K buffer
+        printf("[PAGE-DEBUG] Not FIL_PAGE_COMPRESSED, copying raw data to 16K buffer\n");
         fflush(stdout);
-        memcpy(dst, src, physical);
+        // Clear the entire 16KB buffer first, then copy the physical page data
+        memset(dst, 0, logical);
+        memcpy(dst, src, physical);  // Copy physical size into logical buffer
         return 0;
     }
     
-    printf("[PAGE-DEBUG] Page appears compressed - attempting decompression\n");
+    printf("[PAGE-DEBUG] FIL_PAGE_COMPRESSED detected - attempting decompression\n");
     fflush(stdout);
     
     // This is a compressed INDEX page - attempt decompression (Percona's approach)
