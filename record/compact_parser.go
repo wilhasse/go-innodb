@@ -1,6 +1,7 @@
 // compact_parser.go - Parser for InnoDB compact record format
 package record
 
+// NOTE: Compact format layout: [varlen headers][NULL bitmap][5B header][data]
 import (
 	"fmt"
 	"github.com/wilhasse/go-innodb/column"
@@ -77,31 +78,32 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 	}
 	
 	// Step 2: Parse variable-length field headers
-	varLengths := make([]int, 0)
+	// Headers are stored right-to-left before the NULL bitmap.
+	// Because we iterate from the last varlen column to the first, we must
+	// PREPEND each decoded length to keep varLengths in column order.
+	varLengths := make([]int, 0, len(p.tableDef.VariableLengthColumns()))
 	varLenHeaderSize := 0
 	
 	if p.tableDef.HasVariableLengthColumn() {
-		// Start reading from before NULL bitmap
+		// Start at the byte just before the NULL bitmap
 		varHeaderPos := headerPos - nullBitmapSize
-		
-		// Read variable-length headers in reverse order
-		// Only count non-PK variable columns for leaf pages
+		// Decide which varlen columns are present in the record.
+		// - Leaf records (clustered or secondary) carry headers for ALL
+		//   variable-length user columns present in the record.
+		// - Internal (node-pointer) records carry only key columns.
+		// (We rely on the provided TableDef to reflect the clustered index.)
 		var varColumns []*schema.Column
 		if isLeafPage {
-			// For leaf pages, all variable columns get headers
-			for _, col := range p.tableDef.VariableLengthColumns() {
-				// But skip primary key columns as they're handled separately
-				if !col.IsPrimaryKey {
-					varColumns = append(varColumns, col)
-				}
-			}
+			varColumns = p.tableDef.VariableLengthColumns()
 		} else {
-			// For non-leaf pages, only PK variable columns
 			varColumns = p.tableDef.GetPrimaryKeyVarLenColumns()
 		}
 		
-		// We need to read backwards
-		for i := len(varColumns) - 1; i >= 0; i-- {
+		
+		// Variable-length headers are stored in reverse column order.
+		// We read backwards through memory, but the rightmost header
+		// corresponds to the FIRST variable column, not the last.
+		for i := 0; i < len(varColumns); i++ {
 			col := varColumns[i]
 			
 			// Check if this column is NULL
@@ -148,77 +150,19 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 				}
 			}
 			
-			varLengths = append(varLengths, length) // Append length (we're reading in reverse, but want forward order)
+			// Append to maintain column order
+			varLengths = append(varLengths, length)
 		}
 	}
 	
 	// Step 3: Parse actual column data starting from recordPos
+	// Note: Transaction fields (6-byte trx_id + 7-byte roll_ptr) are stored
+	// AFTER the primary key columns in clustered index leaf pages.
 	dataPos := recordPos
 	varLenIdx := 0
 	
-	// First, parse primary key columns
+	// First parse primary key columns
 	for _, col := range p.tableDef.PrimaryKeyColumns() {
-		// Check if column is NULL (shouldn't happen for primary key)
-		isNull := false
-		if col.Nullable {
-			for idx, nullCol := range p.tableDef.NullableColumns() {
-				if nullCol.Name == col.Name && nullBitmap[idx] {
-					isNull = true
-					break
-				}
-			}
-		}
-		
-		if isNull {
-			record.Values[col.Name] = nil
-			if col.IsVariableLength() {
-				varLenIdx++
-			}
-			continue
-		}
-		
-		// Get variable length if applicable
-		varLen := 0
-		if col.IsVariableLength() {
-			if varLenIdx < len(varLengths) {
-				varLen = varLengths[varLenIdx]
-				varLenIdx++
-			}
-		}
-		
-		// Parse column value
-		value, bytesRead, err := column.ParseColumn(pageData, dataPos, col, varLen)
-		if err != nil {
-			// For primary key, try to handle it specially
-			if col.Type == schema.TypeInt && !col.Unsigned {
-				// AUTO_INCREMENT columns are stored as unsigned but may be declared as signed
-				val, err := format.Be32(pageData, dataPos)
-				if err == nil {
-					// Don't XOR for primary key
-					record.Values[col.Name] = int32(val)
-					dataPos += 4
-					continue
-				}
-			}
-			return nil, fmt.Errorf("parse primary key column %s: %w", col.Name, err)
-		}
-		
-		record.Values[col.Name] = value
-		dataPos += bytesRead
-	}
-	
-	// Skip transaction ID and roll pointer (13 bytes total) for leaf pages
-	if isLeafPage {
-		// Skip 6-byte transaction ID and 7-byte roll pointer
-		dataPos += 13
-	}
-	
-	// Now parse non-primary key columns
-	for _, col := range p.tableDef.Columns {
-		// Skip if already parsed as primary key
-		if col.IsPrimaryKey {
-			continue
-		}
 		// Check if column is NULL
 		isNull := false
 		if col.Nullable {
@@ -250,16 +194,57 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 		// Parse column value
 		value, bytesRead, err := column.ParseColumn(pageData, dataPos, col, varLen)
 		if err != nil {
-			// Skip unsupported types for now
-			if err == schema.ErrUnsupportedType {
-				if col.IsVariableLength() {
-					dataPos += varLen
-				} else {
-					dataPos += col.StorageSize()
+			return nil, fmt.Errorf("parse column %s: %w", col.Name, err)
+		}
+		
+		record.Values[col.Name] = value
+		dataPos += bytesRead
+	}
+	
+	// Skip transaction ID and roll pointer (13 bytes total) for leaf pages
+	if isLeafPage {
+		// Skip 6-byte transaction ID and 7-byte roll pointer
+		dataPos += 13
+	}
+	
+	// Now parse non-primary key columns
+	for _, col := range p.tableDef.Columns {
+		// Skip if already parsed as primary key
+		if col.IsPrimaryKey {
+			continue
+		}
+		
+		// Check if column is NULL
+		isNull := false
+		if col.Nullable {
+			for idx, nullCol := range p.tableDef.NullableColumns() {
+				if nullCol.Name == col.Name && nullBitmap[idx] {
+					isNull = true
+					break
 				}
-				record.Values[col.Name] = nil
-				continue
 			}
+		}
+		
+		if isNull {
+			record.Values[col.Name] = nil
+			if col.IsVariableLength() {
+				varLenIdx++
+			}
+			continue
+		}
+		
+		// Get variable length if applicable
+		varLen := 0
+		if col.IsVariableLength() {
+			if varLenIdx < len(varLengths) {
+				varLen = varLengths[varLenIdx]
+				varLenIdx++
+			}
+		}
+		
+		// Parse column value
+		value, bytesRead, err := column.ParseColumn(pageData, dataPos, col, varLen)
+		if err != nil {
 			return nil, fmt.Errorf("parse column %s: %w", col.Name, err)
 		}
 		

@@ -2,3 +2,4 @@ innodb-java-reader
 /go-innodb
 *.ibd
 !testdata/**/*.ibd
+go-innodb-codebase-*.txt
