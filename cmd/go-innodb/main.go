@@ -9,6 +9,8 @@ import (
 	"text/tabwriter"
 
 	goinnodb "github.com/wilhasse/go-innodb"
+	"github.com/wilhasse/go-innodb/schema"
+	"github.com/wilhasse/go-innodb/record"
 )
 
 func main() {
@@ -19,6 +21,8 @@ func main() {
 		showRecs = flag.Bool("records", false, "Show all records in the page")
 		maxRecs  = flag.Int("max-records", 100, "Maximum records to display")
 		verbose  = flag.Bool("v", false, "Verbose output")
+		sqlFile  = flag.String("sql", "", "Path to SQL file with CREATE TABLE statement")
+		parseData = flag.Bool("parse", false, "Parse column data using table schema")
 	)
 
 	flag.Usage = func() {
@@ -48,6 +52,19 @@ func main() {
 	}
 	defer f.Close()
 
+	// Load table schema if provided
+	var tableDef *schema.TableDef
+	if *sqlFile != "" {
+		tableDef, err = schema.ParseTableDefFromSQLFile(*sqlFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing SQL file: %v\n", err)
+			os.Exit(1)
+		}
+		if *verbose {
+			fmt.Printf("Loaded schema: %s\n", tableDef)
+		}
+	}
+
 	// Create page reader
 	reader := goinnodb.NewPageReader(f)
 
@@ -61,15 +78,15 @@ func main() {
 	// Output based on format
 	switch *format {
 	case "json":
-		outputJSON(page, *showRecs, *maxRecs)
+		outputJSON(page, *showRecs, *maxRecs, tableDef, *parseData)
 	case "summary":
 		outputSummary(page)
 	default:
-		outputText(page, *showRecs, *maxRecs, *verbose)
+		outputText(page, *showRecs, *maxRecs, *verbose, tableDef, *parseData)
 	}
 }
 
-func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bool) {
+func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bool, tableDef *schema.TableDef, parseData bool) {
 	fmt.Printf("=== Page %d ===\n", page.PageNo)
 	fmt.Printf("\nFIL Header:\n")
 	fmt.Printf("  Checksum:    0x%08x\n", page.FIL.Checksum)
@@ -124,12 +141,68 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 
 		if showRecs {
 			fmt.Printf("\nRecords:\n")
-			records, err := goinnodb.WalkRecords(indexPage, maxRecs, true)
-			if err != nil {
-				fmt.Printf("  Error walking records: %v\n", err)
+			
+			// Parse records with schema if available
+			var records []goinnodb.GenericRecord
+			if parseData && tableDef != nil {
+				// Use compact parser to parse records with column values
+				parser := record.NewCompactParser(tableDef)
+				parsedRecords := make([]goinnodb.GenericRecord, 0)
+				
+				// Walk and parse each record
+				rawRecords, err := goinnodb.WalkRecords(indexPage, maxRecs, true)
+				if err != nil {
+					fmt.Printf("  Error walking records: %v\n", err)
+				} else {
+					for _, rawRec := range rawRecords {
+						// Re-parse with column data
+						parsedRec, err := parser.ParseRecord(indexPage.Inner.Data, rawRec.PrimaryKeyPos, indexPage.IsLeaf())
+						if err != nil {
+							// Fall back to raw record if parsing fails
+							parsedRecords = append(parsedRecords, rawRec)
+						} else {
+							// Copy metadata from raw record
+							parsedRec.PageNumber = rawRec.PageNumber
+							parsedRecords = append(parsedRecords, *parsedRec)
+						}
+					}
+					records = parsedRecords
+				}
 			} else {
+				// Use standard walk without parsing
+				records, err = goinnodb.WalkRecords(indexPage, maxRecs, true)
+				if err != nil {
+					fmt.Printf("  Error walking records: %v\n", err)
+				}
+			}
+			
+			if records != nil {
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-				if verbose {
+				
+				// Display parsed column values if available
+				if parseData && tableDef != nil && len(records) > 0 && len(records[0].Values) > 0 {
+					// Build header with column names
+					fmt.Fprintf(w, "  #\t")
+					for _, col := range tableDef.Columns {
+						fmt.Fprintf(w, "%s\t", col.Name)
+					}
+					fmt.Fprintln(w)
+					
+					// Display values
+					for i, rec := range records {
+						fmt.Fprintf(w, "  %d\t", i)
+						for _, col := range tableDef.Columns {
+							val, exists := rec.GetValue(col.Name)
+							if !exists || val == nil {
+								fmt.Fprintf(w, "NULL\t")
+							} else {
+								fmt.Fprintf(w, "%v\t", val)
+							}
+						}
+						fmt.Fprintln(w)
+					}
+				} else if verbose {
+					// Original verbose display with hex data
 					fmt.Fprintf(w, "  #\tHeap#\tType\tDeleted\tOwned\tNext\tData (hex)\tReadable Strings\n")
 					for i, rec := range records {
 						dataHex := ""
@@ -188,7 +261,7 @@ func outputSummary(page *goinnodb.InnerPage) {
 	fmt.Println()
 }
 
-func outputJSON(page *goinnodb.InnerPage, showRecs bool, maxRecs int) {
+func outputJSON(page *goinnodb.InnerPage, showRecs bool, maxRecs int, tableDef *schema.TableDef, parseData bool) {
 	output := map[string]interface{}{
 		"page_number": page.PageNo,
 		"fil_header": map[string]interface{}{

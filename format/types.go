@@ -1,6 +1,13 @@
 // types.go - Core type definitions and constants for InnoDB page parsing
 package format
 
+import "errors"
+
+// Common errors
+var (
+	ErrShortRead = errors.New("short read: not enough bytes")
+)
+
 // Page size and structure constants
 const (
 	PageSize          = 16 * 1024 // 16384
