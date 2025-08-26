@@ -1,22 +1,16 @@
 # InnoDB Page Parser
 
-A Go library and command-line tool for parsing and analyzing InnoDB database pages. This tool allows you to inspect the internal structure of InnoDB data files (.ibd files) at the page level, providing insights into page headers, records, and metadata.
+A Go library and command-line tool for parsing InnoDB database pages (.ibd files) and extracting actual column data using table schemas.
 
 ## Features
 
-- **Page Structure Analysis**: Parse and inspect InnoDB page headers, trailers, and internal structures
-- **Multiple Page Types**: Support for INDEX, ALLOCATED, UNDO_LOG, and SDI page types
-- **Record Traversal**: Walk through records in index pages following the linked list structure
-- **Flexible Output**: Text, JSON, or summary output formats
-- **Library & CLI**: Use as a Go library or standalone command-line tool
+- **Page Structure Analysis**: Parse InnoDB page headers, records, and metadata
+- **Column Data Extraction**: Extract actual column values using CREATE TABLE schemas
+- **Multiple Output Formats**: Text, JSON, or summary output
 - **Compact Format Support**: Full support for InnoDB compact record format
+- **Schema-Aware Parsing**: Parse records using table definitions from SQL files
 
 ## Installation
-
-### Prerequisites
-- Go 1.20 or higher
-
-### Building from Source
 
 ```bash
 # Clone the repository
@@ -26,56 +20,51 @@ cd go-innodb
 # Build the library and CLI tool
 make build
 
-# Or build only the CLI tool
-make build-tool
-
-# Install to $GOPATH/bin
+# Or install to $GOPATH/bin
 make install
 ```
 
 ## Usage
 
-### Quick Start with Test Data
+### Quick Start
 
 ```bash
-# Build the tool
-make build
+# Parse page with hex dump only (no schema)
+./go-innodb -file testdata/users/users.ibd -page 4 -records
 
-# Try with included test data
-./go-innodb -file testdata/users/users.ibd -page 4 -records -v
+# Parse with schema to extract actual column values
+./go-innodb -file testdata/users/users.ibd -page 4 -sql testdata/users/users.sql -parse -records
 ```
 
-### Command-Line Tool
+### Column Data Extraction (NEW!)
 
-The `go-innodb` command-line tool provides a user-friendly interface for analyzing InnoDB pages:
+With a CREATE TABLE schema, the parser can extract actual column values:
 
 ```bash
-# Parse page 0 (root page) from a data file
-./go-innodb -file /path/to/table.ibd
-
-# Parse a specific page number
-./go-innodb -file /path/to/table.ibd -page 3
-
-# Show records in a page with actual data (verbose mode)
-./go-innodb -file /path/to/table.ibd -page 3 -records -v
-
-# Output in JSON format
-./go-innodb -file /path/to/table.ibd -page 3 -format json
-
-# Get a quick summary
-./go-innodb -file /path/to/table.ibd -page 3 -format summary
+# Provide the table schema via SQL file
+./go-innodb -file data.ibd -page 4 -sql schema.sql -parse -records
 ```
 
-#### Command-Line Options
+Output with column parsing:
+```
+Records:
+  #  id  name     email                created_at           
+  0  1   Alice    alice@example.com    2023-10-31 02:24:56  
+  1  2   Bob      bob@example.com      2022-03-27 13:24:08  
+  2  3   Charlie  charlie@example.com  2023-10-31 02:24:56
+```
+
+### Command-Line Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-file` | Path to InnoDB data file (.ibd) | Required |
 | `-page` | Page number to read | 0 |
-| `-format` | Output format: text, json, or summary | text |
+| `-sql` | Path to SQL file with CREATE TABLE | Optional |
+| `-parse` | Parse column data using schema | false |
 | `-records` | Show all records in the page | false |
-| `-max-records` | Maximum records to display | 100 |
-| `-v` | Verbose output with additional details | false |
+| `-format` | Output format: text, json, summary | text |
+| `-v` | Verbose output | false |
 
 ### Using as a Go Library
 
@@ -85,215 +74,92 @@ package main
 import (
     "fmt"
     "os"
-    goinnodb "github.com/wilhasse/go-innodb"
+    innodb "github.com/wilhasse/go-innodb"
+    "github.com/wilhasse/go-innodb/schema"
 )
 
 func main() {
-    // Open an InnoDB data file
-    file, err := os.Open("table.ibd")
-    if err != nil {
-        panic(err)
-    }
+    // Parse table schema
+    tableDef, _ := schema.ParseTableDefFromSQLFile("users.sql")
+    
+    // Open InnoDB file
+    file, _ := os.Open("users.ibd")
     defer file.Close()
-
-    // Create a page reader
-    reader := goinnodb.NewPageReader(file)
-
-    // Read page 3
-    page, err := reader.ReadPage(3)
-    if err != nil {
-        panic(err)
-    }
-
-    // Check page type
-    fmt.Printf("Page type: %d\n", page.PageType())
-
-    // Parse as index page if applicable
-    if page.PageType() == goinnodb.PageTypeIndex {
-        indexPage, err := goinnodb.ParseIndexPage(page)
-        if err != nil {
-            panic(err)
-        }
-
-        fmt.Printf("Number of records: %d\n", indexPage.Hdr.NumUserRecs)
-        fmt.Printf("Page level: %d\n", indexPage.Hdr.PageLevel)
-        fmt.Printf("Is leaf: %v\n", indexPage.IsLeaf())
-
-        // Walk through records
-        records, err := indexPage.WalkRecords(100, true)
-        if err != nil {
-            panic(err)
-        }
-
-        for i, rec := range records {
-            fmt.Printf("Record %d: heap_no=%d, deleted=%v\n", 
-                i, rec.Header.HeapNumber, rec.Header.FlagsDeleted)
-        }
+    
+    // Read page
+    reader := innodb.NewPageReader(file)
+    page, _ := reader.ReadPage(4)
+    
+    // Parse as index page
+    indexPage, _ := innodb.ParseIndexPage(page)
+    
+    // Extract records with column data
+    records, _ := indexPage.WalkRecordsWithSchema(tableDef, true)
+    
+    // Access column values
+    for _, rec := range records {
+        fmt.Printf("ID: %v, Name: %v\n", 
+            rec.Values["id"], 
+            rec.Values["name"])
     }
 }
 ```
 
-## InnoDB Page Structure
+## Documentation
 
-### Page Layout (16KB)
+- **[InnoDB Page Parsing Guide](docs/INNODB_PAGE_PARSING.md)** - Complete parsing process and pitfalls
+- **[Compact Format Details](docs/COMPACT_FORMAT_DETAILS.md)** - Binary layout specifications  
+- **[Debugging Guide](docs/DEBUGGING_GUIDE.md)** - Troubleshooting common issues
+- **[Architecture Overview](docs/ARCHITECTURE.md)** - Project structure and design
 
+## Supported Data Types
+
+Currently supported MySQL column types:
+- Integer types: TINYINT, SMALLINT, INT, BIGINT (signed/unsigned)
+- String types: CHAR, VARCHAR
+- Date/Time types: DATE, DATETIME, TIMESTAMP, YEAR
+- Work in progress: DECIMAL, FLOAT, DOUBLE, TEXT, BLOB
+
+## Output Examples
+
+### Without Schema (Hex Dump)
 ```
-+------------------+ 0
-| FIL Header       | 38 bytes
-+------------------+ 38
-| Page Header      | 56 bytes (includes FSEG header)
-+------------------+ 94
-| Infimum Record   | System record
-+------------------+
-| Supremum Record  | System record
-+------------------+
-| User Records     | Variable size
-| ...              |
-+------------------+
-| Free Space       |
-+------------------+
-| Page Directory   | Variable size (grows backwards)
-+------------------+ 16376
-| FIL Trailer      | 8 bytes
-+------------------+ 16384
+Record 0: InnerOffset=128, Type=CONVENTIONAL
+  DATA (50 bytes): 80 00 00 01 00 00 00 01 ae b3 81 00 ...
 ```
 
-### Key Components
-
-#### FIL Header (38 bytes)
-- **Checksum**: Page checksum for integrity verification
-- **Page Number**: Unique page identifier within the tablespace
-- **Previous/Next**: Pointers for doubly-linked list of pages
-- **LSN**: Log Sequence Number for recovery
-- **Page Type**: Type of page (INDEX, UNDO_LOG, etc.)
-- **Space ID**: Tablespace identifier
-
-#### Index Header (36 bytes)
-- **Number of Records**: Count of user records in the page
-- **Page Level**: 0 for leaf pages, >0 for internal nodes
-- **Index ID**: Unique identifier for the index
-- **Format**: Compact or Redundant format indicator
-- **Garbage Space**: Bytes occupied by deleted records
-
-#### Records
-- Stored as a linked list using relative offsets
-- Each record has a 5-byte header in compact format
-- INFIMUM and SUPREMUM are system records marking boundaries
+### With Schema (Parsed Columns)
+```
+Records:
+  #  id  name     email                created_at           
+  0  1   Alice    alice@example.com    2023-10-31 02:24:56
+```
 
 ## Development
-
-### Project Structure
-
-```
-go-innodb/
-├── cmd/
-│   └── go-innodb/         # CLI tool source
-│       └── main.go
-├── docs/                  # Documentation
-│   ├── API.md            # API documentation
-│   ├── ARCHITECTURE.md   # Code organization guide
-│   ├── EXAMPLES.md       # Usage examples
-│   └── INTERNALS.md      # InnoDB internals
-├── testdata/              # Test data files
-│   ├── users/            # Sample users table
-│   └── README.md         # Test data documentation
-├── *.go                   # Library source files (see docs/ARCHITECTURE.md)
-├── doc.go                # Package documentation
-├── go.mod                # Go module definition
-├── Makefile              # Build automation
-├── CLAUDE.md             # AI assistant context
-└── README.md             # This file
-```
-
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on code organization and design decisions.
-
-### Building and Testing
 
 ```bash
 # Format code
 make fmt
 
-# Run static analysis
-make vet
+# Run tests  
+make test
 
 # Run linters
 make lint
 
-# Run tests
-make test
-
-# Run tests with coverage
-make coverage
-
-# Clean build artifacts
-make clean
-
-# Show all available targets
+# Show all targets
 make help
 ```
 
-### Core Types
+## Key Implementation Details
 
-- `InnerPage`: Base page structure with FIL header/trailer
-- `IndexPage`: Parsed INDEX page with header and records
-- `PageReader`: Utility for reading pages from files
-- `GenericRecord`: Record structure with header and position
-- `RecordHeader`: 5-byte compact record header
+The parser handles several InnoDB format complexities:
+- **Variable-length headers** are stored in reverse column order
+- **Transaction fields** (13 bytes) are placed after primary key columns
+- **Signed integers** use XOR transformation with the sign bit
+- **NULL bitmap** calculation: (nullable_columns + 7) / 8 bytes
 
-## Output Examples
-
-### Text Format
-```
-=== Page 3 ===
-
-FIL Header:
-  Checksum:    0x12345678
-  Page Number: 3
-  Page Type:   INDEX (17855)
-  Space ID:    1
-  LSN:         123456789
-  Prev Page:   2
-  Next Page:   4
-
-Index Header:
-  Format:      COMPACT
-  Records:     42 user records
-  Page Level:  0 (leaf)
-  Index ID:    140
-
-Page Usage:  8432 / 16384 bytes (51.5%)
-```
-
-### JSON Format
-```json
-{
-  "page_number": 3,
-  "fil_header": {
-    "checksum": 305419896,
-    "page_number": 3,
-    "page_type": 17855,
-    "page_type_name": "INDEX",
-    "space_id": 1,
-    "lsn": 123456789
-  },
-  "index_page": {
-    "format": 1,
-    "format_name": "COMPACT",
-    "user_records": 42,
-    "page_level": 0,
-    "is_leaf": true,
-    "index_id": 140,
-    "used_bytes": 8432
-  }
-}
-```
-
-## Limitations
-
-- Only supports InnoDB compact record format (not redundant format)
-- Read-only operations (no modification capabilities)
-- Requires understanding of InnoDB internals for advanced analysis
-- Does not decode actual record data (only headers and metadata)
+See the [documentation](docs/) for detailed technical information.
 
 ## Contributing
 
@@ -302,20 +168,15 @@ Contributions are welcome! Please ensure:
 2. All tests pass
 3. Documentation is updated for new features
 
+## Acknowledgments
+
+Based on:
+- [innodb-java-reader](https://github.com/alibaba/innodb-java-reader) - Alibaba's Java implementation
+- [Jeremy Cole's InnoDB Internals](https://blog.jcole.us/innodb/)
+
 ## License
 
 This project is open source. Please check the license file for details.
-
-## Acknowledgments
-
-This project is inspired by and based on:
-- [innodb-java-reader](https://github.com/alibaba/innodb-java-reader) - Alibaba's Java library for parsing InnoDB files
-
-## References
-
-- [Jeremy Cole's InnoDB Ruby Tools](https://github.com/jeremycole/innodb_ruby)
-- [Nextgres OSS Embedded InnoDB](https://github.com/nextgres/oss-embedded-innodb)
-- MySQL/MariaDB InnoDB source code
 
 ## Support
 
