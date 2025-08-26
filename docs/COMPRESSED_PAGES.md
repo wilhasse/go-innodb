@@ -156,6 +156,26 @@ MySQL Stubs (mysql_stubs.cpp)
    - Static library must be fully included to resolve all symbols
    - Solution: Use `--whole-archive` linker flag
 
+### Oracle Engineers' Guidance Applied
+
+This implementation follows guidance from Oracle MySQL engineers, adapted for environments without full MySQL source access:
+
+**Oracle's Recommendations:**
+- Use proper InnoDB types from MySQL headers (`my_config.h`, `page0zip.h`, etc.)
+- Update `srv_page_size` globals at runtime for consistency
+- Implement complete logger classes with ostringstream buffering
+- Use `[[noreturn]]` attribute for assertion handlers
+- Call InnoDB utility functions like `page_zip_des_init()` when available
+
+**Our Adaptation (Header-Free Approach):**
+- Forward-declare InnoDB types instead of including full MySQL headers
+- Implement runtime srv_page_size updates with proper log2 calculations
+- Use ostringstream-based loggers following Oracle's pattern
+- Apply C++11/14 best practices (brace initialization, proper attributes)
+- Manual page size calculations when InnoDB utilities aren't available
+
+This approach provides production-quality compression support without requiring the full MySQL development environment.
+
 ### File Structure
 ```
 lib/

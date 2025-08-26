@@ -1,87 +1,112 @@
 // mysql_stubs.cpp - Stub implementations for MySQL/InnoDB symbols
-// These are required by libinnodb_zipdecompress.a but not actually used
-// for decompression operations
+// Following Oracle engineers' guidance for proper InnoDB integration
+// These stubs provide the missing symbols expected by libinnodb_zipdecompress.a
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <iostream>
+#include <cstdio>
 #include <cstring>
+#include <iostream>
+#include <sstream>
 
 // Global variables expected by InnoDB code
+// Note: Using unsigned long instead of ulong (which requires my_config.h)
 extern "C" {
-    // Page size globals - we always use 16KB
-    size_t srv_page_size = 16384;
-    unsigned srv_page_size_shift = 14;  // 2^14 = 16384
+    // Page size globals - updated at runtime for consistency
+    unsigned long srv_page_size = 16384;       // default logical page size
+    unsigned long srv_page_size_shift = 14;    // log2(16384)
 }
 
 // InnoDB logging/error namespace
+// Following Oracle engineers' guidance for proper logger implementation
 namespace ib {
     
-    // Base logger class
+    // Base logger class with ostringstream buffer (Oracle's approach)
     class logger {
     public:
         logger() {}
-        virtual ~logger();  // Declared in header, defined later
-    };
-    
-    // Error logger  
-    class error : public logger {
-    public:
-        error() {}
-        virtual ~error();  // Declared in header, defined later
+        virtual ~logger();
         
+    protected:
+        std::ostringstream m_oss;  // Message buffer
+        
+    public:
         template<typename T>
-        error& operator<<(const T& val) {
-            std::cerr << val;
+        logger& operator<<(const T& val) {
+            m_oss << val;
             return *this;
         }
+    };
+    
+    // Info logger (added for completeness)
+    class info : public logger {
+    public:
+        info() {}
+        virtual ~info();
     };
     
     // Warning logger  
     class warn : public logger {
     public:
         warn() {}
-        virtual ~warn();  // Declared in header, defined later
-        
-        template<typename T>
-        warn& operator<<(const T& val) {
-            std::cerr << val;
-            return *this;
-        }
+        virtual ~warn();
+    };
+    
+    // Error logger  
+    class error : public logger {
+    public:
+        error() {}
+        virtual ~error();
     };
     
     // Fatal logger
     class fatal : public logger {
     public:
         fatal() {}
-        virtual ~fatal();  // Declared in header, defined later
-        
-        template<typename T>
-        fatal& operator<<(const T& val) {
-            std::cerr << val;
-            return *this;
-        }
+        virtual ~fatal();
     };
     
-    // Now define the destructors outside the class (this ensures vtables)
+    // Define destructors outside class for proper vtable generation
+    // Following Oracle's pattern with proper message formatting
     logger::~logger() {}
-    error::~error() {}
-    warn::~warn() {}
+    
+    info::~info() {
+        if (!m_oss.str().empty()) {
+            std::cerr << "[INFO]  zipshim: " << m_oss.str() << "\n";
+        }
+    }
+    
+    warn::~warn() {
+        if (!m_oss.str().empty()) {
+            std::cerr << "[WARN]  zipshim: " << m_oss.str() << "\n";
+        }
+    }
+    
+    error::~error() {
+        if (!m_oss.str().empty()) {
+            std::cerr << "[ERROR] zipshim: " << m_oss.str() << "\n";
+        }
+    }
+    
     fatal::~fatal() {
-        std::cerr << " [FATAL]" << std::endl;
+        if (!m_oss.str().empty()) {
+            std::cerr << "[FATAL] zipshim: " << m_oss.str() << "\n";
+        }
+        std::abort();  // Fatal errors should terminate
     }
 }
 
-// Debug assertion function - C++ linkage (not extern "C")
-void ut_dbg_assertion_failed(
-    const char* expr,
-    const char* file,
-    unsigned long line)
-{
-    std::cerr << "Assertion failed: " << expr 
-              << " at " << file << ":" << line << std::endl;
-    // Don't abort in our stub
+// InnoDB assertion hook - following Oracle engineers' guidance
+// Must use C++ linkage (not extern "C") and [[noreturn]] attribute
+[[noreturn]] void ut_dbg_assertion_failed(const char* expr,
+                                          const char* file,
+                                          unsigned long line) {
+    std::fprintf(stderr, "ut_dbg_assertion_failed: %s (%s:%lu)\n",
+                 expr ? expr : "(null)", 
+                 file ? file : "(null)", 
+                 line);
+    std::abort();  // Oracle's approach: always abort on assertion failure
 }
 
 // Additional stubs that might be needed

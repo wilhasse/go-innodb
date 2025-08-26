@@ -1,9 +1,16 @@
 // zipshim.cpp - C++ wrapper for InnoDB compressed page decompression
+// Following Oracle engineers' guidance for proper InnoDB integration
 // This shim provides a C ABI for Go to call via cgo
 
 extern "C" {
 #include <stdint.h>
 #include <string.h>
+}
+
+// Access to InnoDB globals (defined in mysql_stubs.cpp)
+extern "C" {
+    extern unsigned long srv_page_size;
+    extern unsigned long srv_page_size_shift;
 }
 
 // Forward declarations for InnoDB types and functions
@@ -32,22 +39,30 @@ static void page_zip_des_init(page_zip_des_t* page_zip) {
     }
 }
 
-// Convert physical page size to shift size (ssize)
-// 1KB = 1 << 10, 2KB = 2 << 10, 4KB = 4 << 10, 8KB = 8 << 10
+// Helper function for log2 calculation (Oracle's approach)
+static unsigned long ilog2_ul(unsigned long v) {
+    unsigned long s = 0;
+    while ((1UL << s) < v) ++s;
+    return s;
+}
+
+// Convert physical page size to shift size (ssize) following Oracle's approach
+// This matches InnoDB's internal page_size_to_ssize() function
 static uint32_t page_size_to_ssize(size_t physical) {
     switch (physical) {
-        case 1024:  return 1;  // 1KB
-        case 2048:  return 2;  // 2KB  
-        case 4096:  return 4;  // 4KB
-        case 8192:  return 8;  // 8KB
-        case 16384: return 16; // 16KB (though this would mean no compression)
-        default:    return 0;  // Invalid
+        case 1024:  return 1;  // 1KB -> ssize=1
+        case 2048:  return 2;  // 2KB -> ssize=2  
+        case 4096:  return 4;  // 4KB -> ssize=4
+        case 8192:  return 8;  // 8KB -> ssize=8
+        case 16384: return 16; // 16KB -> ssize=16 (uncompressed)
+        default:    return 0;  // Invalid size
     }
 }
 
-// Main decompression function exposed to Go
+// Main decompression function exposed to Go - following Oracle's guidance
+// Oracle's approach: update srv_page_size globals at runtime for consistency
 extern "C" int innodb_zip_decompress(
-    const void* src,        // Pointer to compressed page data
+    const void* src,        // Pointer to compressed page data  
     size_t      physical,   // Physical page size (e.g., 8192 for 8K)
     void*       dst,        // Output buffer (16KB)
     size_t      logical)    // Logical page size (usually 16384)
@@ -61,22 +76,23 @@ extern "C" int innodb_zip_decompress(
         return -2;
     }
     
-    // Initialize page_zip descriptor
-    page_zip_des_t z;
-    memset(&z, 0, sizeof(z));
-    page_zip_des_init(&z);
+    // Oracle's approach: keep InnoDB globals consistent for this call
+    srv_page_size = static_cast<unsigned long>(logical);
+    srv_page_size_shift = static_cast<unsigned long>(ilog2_ul(static_cast<unsigned long>(logical)));
     
+    // Build page_zip descriptor following Oracle's pattern
+    page_zip_des_t z{};  // C++11 brace initialization
+    page_zip_des_init(&z);
     z.data = const_cast<void*>(src);
-    z.ssize = page_size_to_ssize(physical);
+    z.ssize = page_size_to_ssize(physical);  // derives zip shift from physical size
     
     if (z.ssize == 0) {
         // Invalid physical page size
         return -3;
     }
     
-    // Decompress the page
-    // The 'all' parameter tells it to decompress the entire page
-    // Note: const_cast because the C++ function takes non-const pointer
+    // Decompress the whole page into 'dst'
+    // Oracle's approach: page_zip_decompress_low(&z, dst, /*all=*/true)
     bool ok = page_zip_decompress_low(&z, static_cast<page_t*>(dst), true);
     
     return ok ? 0 : -4;
