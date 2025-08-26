@@ -86,16 +86,16 @@ static unsigned long ilog2_ul(unsigned long v) {
     return s;
 }
 
-// Percona engineers' CORRECT ZIP ssize calculation  
-// ZIP formula: 1 << (10 + ssize) = physical_size
-// So 8KB → ssize=3 (because 1 << (10+3) = 1 << 13 = 8192)
+// MySQL ≥8.x ssize calculation (Oracle's current definition)
+// Formula: physical = 512 << ssize (where 512 = UNIV_ZIP_SIZE_MIN >> 1)
+// So 8KB → ssize=4 (because 512 << 4 = 8192)
 static inline uint32_t zip_shift_from_bytes(size_t z) {
     switch (z) {
-        case 1024:  return 0; // 1KB -> ssize=0 (1 << (10+0) = 1024)
-        case 2048:  return 1; // 2KB -> ssize=1 (1 << (10+1) = 2048)
-        case 4096:  return 2; // 4KB -> ssize=2 (1 << (10+2) = 4096)  
-        case 8192:  return 3; // 8KB -> ssize=3 (1 << (10+3) = 8192)
-        case 16384: return 4; // 16KB -> ssize=4 (uncompressed/legacy)
+        case 1024:  return 1; // 1KB -> ssize=1 (512 << 1 = 1024)
+        case 2048:  return 2; // 2KB -> ssize=2 (512 << 2 = 2048)
+        case 4096:  return 3; // 4KB -> ssize=3 (512 << 3 = 4096)  
+        case 8192:  return 4; // 8KB -> ssize=4 (512 << 4 = 8192)
+        case 16384: return 5; // 16KB -> ssize=5 (512 << 5 = 16384)
         default:    return 0; // Invalid => let caller handle
     }
 }
@@ -194,10 +194,11 @@ extern "C" int innodb_zip_decompress(
         return -3;
     }
     
-    // Percona engineers' sanity check: verify ZIP ssize calculation is correct
-    size_t expected_physical = static_cast<size_t>(1u) << (10 + page_zip.ssize);
+    // MySQL ≥8.x sanity check: verify ssize calculation is correct
+    // Formula: physical = 512 << ssize
+    size_t expected_physical = static_cast<size_t>(512) << page_zip.ssize;
     if (expected_physical != physical) {
-        fprintf(stderr, "[ASSERT] ZIP ssize mismatch: expect=%zu actual_physical=%zu (ssize=%u)\n",
+        fprintf(stderr, "[ASSERT] ssize mismatch: expect=%zu actual_physical=%zu (ssize=%u)\n",
                 expected_physical, physical, page_zip.ssize);
         free(temp);
         return -4;
@@ -205,14 +206,14 @@ extern "C" int innodb_zip_decompress(
     
     // Oracle engineers' quick sanity checks before calling decompressor
     uint16_t type = read_uint16_be(static_cast<const unsigned char*>(src) + FIL_PAGE_TYPE_OFFSET);
-    fprintf(stderr, "page_type=%u (expect 17855 for INDEX), ssize=%u (8KB should be 3)\n",
+    fprintf(stderr, "page_type=%u (expect 17855 for INDEX), ssize=%u (8KB should be 4)\n",
             (unsigned)type, (unsigned)page_zip.ssize);
     fflush(stderr);
     
     // Debug output to verify Oracle fixes are applied
     printf("[ORACLE-DEBUG] Before decompression:\n");
     printf("[PERCONA-DEBUG]   page_zip.data = %p (should be src, not src+38)\n", page_zip.data);
-    printf("[PERCONA-DEBUG]   page_zip.ssize = %u (should be 3 for 8KB)\n", page_zip.ssize);
+    printf("[ORACLE-DEBUG]   page_zip.ssize = %u (should be 4 for 8KB)\n", page_zip.ssize);
     printf("[ORACLE-DEBUG]   srv_page_size = %lu (should be 16384)\n", srv_page_size);
     printf("[ORACLE-DEBUG]   univ_page_size logical/physical = %lu/%lu\n", 
            univ_page_size.logical(), univ_page_size.physical());

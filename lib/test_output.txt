@@ -1,0 +1,1 @@
+/bin/bash: linha 1: ./compressed_example: Arquivo ou diretório inexistente

@@ -1,4 +1,5 @@
 innodb-java-reader
+percona-parser
 /go-innodb
 *.ibd
 !testdata/**/*.ibd

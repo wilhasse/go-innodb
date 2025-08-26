@@ -1,0 +1,5 @@
+Using KEY_BLOCK_SIZE=8K (physical size: 8192 bytes)
+
+Reading page 0...
+Warning: decompression failed for page 0: decompression failed
+Error reading page: expected 16384B page, got 8192

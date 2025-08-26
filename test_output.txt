@@ -1,0 +1,8 @@
+Using KEY_BLOCK_SIZE=8K (physical size: 8192 bytes)
+
+Reading page 0...
+[GO-DEBUG] DecompressPage called with physicalSize=8192, srcLen=8192
+[GO-DEBUG] Calling C decompression: physical=8192, logical=16384
+[GO-DEBUG] C function returned: -4
+Warning: decompression failed for page 0: decompression failed
+Error reading page: expected 16384B page, got 8192
