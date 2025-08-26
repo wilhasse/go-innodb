@@ -1,0 +1,47 @@
+# Makefile for building InnoDB decompression library with proper headers
+# This version uses real MySQL/Percona headers for ABI compatibility
+
+CXX = g++
+CXXFLAGS = -fPIC -O2 -Wall -std=c++17 -DUNIV_NO_ERR_MSGS -DUNIV_LIBRARY
+
+# MySQL/Percona source directory (adjust this path to your MySQL source)
+# This should point to the root of the MySQL/Percona source tree
+# that was used to build libinnodb_zipdecompress.a
+MYSQL_SOURCE = ../../../mysql-server
+
+# Include paths for InnoDB headers
+INNODB_INCLUDES = \
+    -I$(MYSQL_SOURCE)/storage/innobase/include \
+    -I$(MYSQL_SOURCE)/storage/innobase \
+    -I$(MYSQL_SOURCE)/include \
+    -I$(MYSQL_SOURCE)
+
+LDFLAGS = -shared
+
+# Output library
+DECOMPRESS_TARGET = libinnodb_decompress_proper.so
+
+# Source files  
+DECOMPRESS_SOURCES = innodb_decompress_proper.cpp mysql_stubs.cpp
+DECOMPRESS_OBJECTS = $(DECOMPRESS_SOURCES:.cpp=.o)
+
+# InnoDB static library
+INNODB_LIB = libinnodb_zipdecompress.a
+
+# Build the decompression library with proper headers
+$(DECOMPRESS_TARGET): $(DECOMPRESS_OBJECTS)
+	$(CXX) $(LDFLAGS) -o $@ $(DECOMPRESS_OBJECTS) \
+		-Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive \
+		-lz -llz4
+
+# Compile with InnoDB headers
+innodb_decompress_proper.o: innodb_decompress_proper.cpp
+	$(CXX) $(CXXFLAGS) $(INNODB_INCLUDES) -c $< -o $@
+
+mysql_stubs.o: mysql_stubs.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(DECOMPRESS_OBJECTS) $(DECOMPRESS_TARGET)
+
+.PHONY: clean

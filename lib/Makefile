@@ -29,7 +29,23 @@ $(TARGET): $(OBJECTS)
 static: $(OBJECTS)
 	ar rcs libzipshim.a $(OBJECTS)
 
-clean:
-	rm -f $(OBJECTS) $(TARGET) libzipshim.a
+# New minimal decompression library
+DECOMPRESS_TARGET = libinnodb_decompress.so
+DECOMPRESS_SOURCES = innodb_decompress_v3.cpp mysql_stubs.cpp
+DECOMPRESS_OBJECTS = innodb_decompress_v3.o mysql_stubs.o
 
-.PHONY: clean static
+# Build the minimal decompression library
+# Include the static library directly for standalone operation
+$(DECOMPRESS_TARGET): $(DECOMPRESS_OBJECTS)
+	$(CXX) $(LDFLAGS) -o $@ $(DECOMPRESS_OBJECTS) -Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive -lz -llz4
+
+# Build both libraries
+all: $(TARGET) $(DECOMPRESS_TARGET)
+
+# Build only the minimal decompression library
+decompress: $(DECOMPRESS_TARGET)
+
+clean:
+	rm -f $(OBJECTS) $(TARGET) libzipshim.a $(DECOMPRESS_OBJECTS) $(DECOMPRESS_TARGET)
+
+.PHONY: clean static all decompress
