@@ -115,6 +115,14 @@ add_file "column/int_parser.go" "Parser for integer column types"
 add_file "column/string_parser.go" "Parser for string/text columns"
 add_file "column/datetime_parser.go" "Parser for date and time columns"
 
+# Add compression support files
+print_color $BLUE "Adding compression support..."
+add_file "compressed.go" "InnoDB compressed page support with cgo bindings"
+add_file "reader_compressed.go" "Compressed page reader implementation"
+add_file "lib/zipshim.cpp" "C++ wrapper implementing Oracle/Percona approach"
+add_file "lib/mysql_stubs.cpp" "MySQL stubs following Oracle engineers' guidance"
+add_file "lib/Makefile" "Build configuration for C++ compression library"
+
 # Add main package files
 print_color $BLUE "Adding main package files..."
 add_file "reader.go" "Page reader for InnoDB data files"
@@ -124,6 +132,10 @@ add_file "doc.go" "Package documentation"
 # Add command-line tool
 print_color $BLUE "Adding CLI tool..."
 add_file "cmd/go-innodb/main.go" "Command-line tool for parsing InnoDB files"
+
+# Add examples
+print_color $BLUE "Adding examples..."
+add_file "examples/compressed_example.go" "Example using compressed page support"
 
 # Add example SQL for testing
 add_file "testdata/users/users.sql" "Example CREATE TABLE statement"
@@ -156,13 +168,15 @@ echo "4. The actual source code is in the directories shown in each file header"
 echo "" >> "$OUTPUT_FILE"
 
 echo "Key Implementation Details:" >> "$OUTPUT_FILE"
-echo "1. InnoDB pages are always 16KB (16384 bytes)" >> "$OUTPUT_FILE"
+echo "1. InnoDB pages are always 16KB logical (compressed pages are 1K/2K/4K/8K physical)" >> "$OUTPUT_FILE"
 echo "2. Multi-byte values use big-endian encoding" >> "$OUTPUT_FILE"
 echo "3. Signed integers are stored with XOR transformation (sign bit flipped)" >> "$OUTPUT_FILE"
 echo "4. Compact record format: [var headers][null bitmap][5-byte header][data]" >> "$OUTPUT_FILE"
 echo "5. Variable-length headers are stored in reverse order before record header" >> "$OUTPUT_FILE"
 echo "6. Primary key columns come first in record data" >> "$OUTPUT_FILE"
 echo "7. Leaf pages have 13-byte transaction fields after primary key" >> "$OUTPUT_FILE"
+echo "8. Compression: Only INDEX pages (17855) are decompressed, others copied as-is" >> "$OUTPUT_FILE"
+echo "9. Uses Oracle/Percona approach with libinnodb_zipdecompress.a via cgo" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 echo "Example Usage:" >> "$OUTPUT_FILE"
