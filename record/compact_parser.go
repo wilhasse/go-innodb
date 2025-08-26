@@ -25,45 +25,45 @@ func NewCompactParser(tableDef *schema.TableDef) *CompactParser {
 func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage bool) (*GenericRecord, error) {
 	// The actual record content starts at recordPos
 	// But we need to read backwards to get variable length headers and NULL bitmap
-	
+
 	// First, read the record header (5 bytes before recordPos)
 	headerPos := recordPos - format.RecordHeaderSize
 	if headerPos < 0 {
 		return nil, fmt.Errorf("invalid record position")
 	}
-	
+
 	header, err := ParseRecordHeader(pageData, headerPos)
 	if err != nil {
 		return nil, fmt.Errorf("parse record header: %w", err)
 	}
-	
+
 	// Create the record
 	record := &GenericRecord{
 		Header:        header,
 		PrimaryKeyPos: recordPos,
 		Values:        make(map[string]interface{}),
 	}
-	
+
 	// Handle special records (INFIMUM/SUPREMUM)
 	if header.Type == format.RecInfimum || header.Type == format.RecSupremum {
 		record.Data = pageData[recordPos : recordPos+format.SystemRecordBytes]
 		return record, nil
 	}
-	
+
 	// For user records, we need to parse the variable-length headers and NULL bitmap
-	
+
 	// Step 1: Parse NULL bitmap (only for leaf pages with nullable columns)
 	nullBitmap := make([]bool, p.tableDef.NullableColumnCount())
 	nullBitmapSize := 0
-	
+
 	if isLeafPage && p.tableDef.HasNullableColumn() {
 		nullBitmapSize = p.tableDef.NullBitmapSize()
 		nullBitmapPos := headerPos - nullBitmapSize
-		
+
 		if nullBitmapPos < 0 {
 			return nil, fmt.Errorf("invalid NULL bitmap position")
 		}
-		
+
 		// Read NULL bitmap
 		nullBytes := pageData[nullBitmapPos:headerPos]
 		nullIdx := 0
@@ -76,14 +76,14 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 			nullIdx++
 		}
 	}
-	
+
 	// Step 2: Parse variable-length field headers
 	// Headers are stored right-to-left before the NULL bitmap.
 	// Because we iterate from the last varlen column to the first, we must
 	// PREPEND each decoded length to keep varLengths in column order.
 	varLengths := make([]int, 0, len(p.tableDef.VariableLengthColumns()))
 	varLenHeaderSize := 0
-	
+
 	if p.tableDef.HasVariableLengthColumn() {
 		// Start at the byte just before the NULL bitmap
 		varHeaderPos := headerPos - nullBitmapSize
@@ -98,14 +98,13 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 		} else {
 			varColumns = p.tableDef.GetPrimaryKeyVarLenColumns()
 		}
-		
-		
+
 		// Variable-length headers are stored in reverse column order.
 		// We read backwards through memory, but the rightmost header
 		// corresponds to the FIRST variable column, not the last.
 		for i := 0; i < len(varColumns); i++ {
 			col := varColumns[i]
-			
+
 			// Check if this column is NULL
 			isNull := false
 			if col.Nullable {
@@ -117,50 +116,50 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 					}
 				}
 			}
-			
+
 			if isNull {
 				varLengths = append([]int{0}, varLengths...) // Prepend 0 for NULL column
 				continue
 			}
-			
+
 			// Read variable length header (1 or 2 bytes)
 			varHeaderPos--
 			if varHeaderPos < 0 {
 				return nil, fmt.Errorf("invalid variable header position")
 			}
-			
+
 			length := int(pageData[varHeaderPos])
 			varLenHeaderSize++
-			
+
 			// Check if it's a 2-byte length
 			if p.needsTwoByteLength(col, length) {
 				varHeaderPos--
 				if varHeaderPos < 0 {
 					return nil, fmt.Errorf("invalid variable header position")
 				}
-				
+
 				// High byte is in the first byte read, with overflow flag in bit 6
 				overflowFlag := (length & 0x40) != 0
 				length = ((length & 0x3F) << 8) | int(pageData[varHeaderPos])
 				varLenHeaderSize++
-				
+
 				if overflowFlag {
 					// TODO: Handle overflow pages
 					return nil, fmt.Errorf("overflow pages not yet supported")
 				}
 			}
-			
+
 			// Append to maintain column order
 			varLengths = append(varLengths, length)
 		}
 	}
-	
+
 	// Step 3: Parse actual column data starting from recordPos
 	// Note: Transaction fields (6-byte trx_id + 7-byte roll_ptr) are stored
 	// AFTER the primary key columns in clustered index leaf pages.
 	dataPos := recordPos
 	varLenIdx := 0
-	
+
 	// First parse primary key columns
 	for _, col := range p.tableDef.PrimaryKeyColumns() {
 		// Check if column is NULL
@@ -173,7 +172,7 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 				}
 			}
 		}
-		
+
 		if isNull {
 			record.Values[col.Name] = nil
 			if col.IsVariableLength() {
@@ -181,7 +180,7 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 			}
 			continue
 		}
-		
+
 		// Get variable length if applicable
 		varLen := 0
 		if col.IsVariableLength() {
@@ -190,30 +189,30 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 				varLenIdx++
 			}
 		}
-		
+
 		// Parse column value
 		value, bytesRead, err := column.ParseColumn(pageData, dataPos, col, varLen)
 		if err != nil {
 			return nil, fmt.Errorf("parse column %s: %w", col.Name, err)
 		}
-		
+
 		record.Values[col.Name] = value
 		dataPos += bytesRead
 	}
-	
+
 	// Skip transaction ID and roll pointer (13 bytes total) for leaf pages
 	if isLeafPage {
 		// Skip 6-byte transaction ID and 7-byte roll pointer
 		dataPos += 13
 	}
-	
+
 	// Now parse non-primary key columns
 	for _, col := range p.tableDef.Columns {
 		// Skip if already parsed as primary key
 		if col.IsPrimaryKey {
 			continue
 		}
-		
+
 		// Check if column is NULL
 		isNull := false
 		if col.Nullable {
@@ -224,7 +223,7 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 				}
 			}
 		}
-		
+
 		if isNull {
 			record.Values[col.Name] = nil
 			if col.IsVariableLength() {
@@ -232,7 +231,7 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 			}
 			continue
 		}
-		
+
 		// Get variable length if applicable
 		varLen := 0
 		if col.IsVariableLength() {
@@ -241,17 +240,17 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 				varLenIdx++
 			}
 		}
-		
+
 		// Parse column value
 		value, bytesRead, err := column.ParseColumn(pageData, dataPos, col, varLen)
 		if err != nil {
 			return nil, fmt.Errorf("parse column %s: %w", col.Name, err)
 		}
-		
+
 		record.Values[col.Name] = value
 		dataPos += bytesRead
 	}
-	
+
 	// Store raw data for debugging
 	endPos := recordPos + header.NextRecOffset
 	if header.NextRecOffset <= 0 || endPos > len(pageData) {
@@ -264,7 +263,7 @@ func (p *CompactParser) ParseRecord(pageData []byte, recordPos int, isLeafPage b
 	if endPos > recordPos && endPos <= len(pageData) {
 		record.Data = pageData[recordPos:endPos]
 	}
-	
+
 	return record, nil
 }
 

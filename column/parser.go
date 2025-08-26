@@ -10,7 +10,7 @@ import (
 type Parser interface {
 	// Parse reads and parses column value from input
 	Parse(input []byte, offset int, col *schema.Column, varLen int) (value interface{}, bytesRead int, err error)
-	
+
 	// Skip skips column value in input without parsing
 	Skip(input []byte, offset int, col *schema.Column, varLen int) (bytesRead int, err error)
 }
@@ -95,20 +95,20 @@ func (p *BaseParser) readMediumInt(input []byte, offset int) (int32, error) {
 	if offset+3 > len(input) {
 		return 0, format.ErrShortRead
 	}
-	
+
 	// Read 3 bytes as unsigned
-	val := uint32(input[offset]) | 
-		(uint32(input[offset+1]) << 8) | 
+	val := uint32(input[offset]) |
+		(uint32(input[offset+1]) << 8) |
 		(uint32(input[offset+2]) << 16)
-	
+
 	// XOR with sign bit
 	val ^= 0x800000
-	
+
 	// Sign extend if negative
 	if val&0x800000 != 0 {
 		val |= 0xFF000000
 	}
-	
+
 	return int32(val), nil
 }
 
@@ -117,8 +117,8 @@ func (p *BaseParser) readUnsignedMediumInt(input []byte, offset int) (uint32, er
 	if offset+3 > len(input) {
 		return 0, format.ErrShortRead
 	}
-	
-	return uint32(input[offset]) | 
-		(uint32(input[offset+1]) << 8) | 
+
+	return uint32(input[offset]) |
+		(uint32(input[offset+1]) << 8) |
 		(uint32(input[offset+2]) << 16), nil
 }

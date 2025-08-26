@@ -9,19 +9,19 @@ import (
 	"text/tabwriter"
 
 	goinnodb "github.com/wilhasse/go-innodb"
-	"github.com/wilhasse/go-innodb/schema"
 	"github.com/wilhasse/go-innodb/record"
+	"github.com/wilhasse/go-innodb/schema"
 )
 
 func main() {
 	var (
-		file     = flag.String("file", "", "Path to InnoDB data file (required)")
-		pageNum  = flag.Uint("page", 0, "Page number to read (default: 0)")
-		format   = flag.String("format", "text", "Output format: text, json, or summary")
-		showRecs = flag.Bool("records", false, "Show all records in the page")
-		maxRecs  = flag.Int("max-records", 100, "Maximum records to display")
-		verbose  = flag.Bool("v", false, "Verbose output")
-		sqlFile  = flag.String("sql", "", "Path to SQL file with CREATE TABLE statement")
+		file      = flag.String("file", "", "Path to InnoDB data file (required)")
+		pageNum   = flag.Uint("page", 0, "Page number to read (default: 0)")
+		format    = flag.String("format", "text", "Output format: text, json, or summary")
+		showRecs  = flag.Bool("records", false, "Show all records in the page")
+		maxRecs   = flag.Int("max-records", 100, "Maximum records to display")
+		verbose   = flag.Bool("v", false, "Verbose output")
+		sqlFile   = flag.String("sql", "", "Path to SQL file with CREATE TABLE statement")
 		parseData = flag.Bool("parse", false, "Parse column data using table schema")
 	)
 
@@ -141,14 +141,14 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 
 		if showRecs {
 			fmt.Printf("\nRecords:\n")
-			
+
 			// Parse records with schema if available
 			var records []goinnodb.GenericRecord
 			if parseData && tableDef != nil {
 				// Use compact parser to parse records with column values
 				parser := record.NewCompactParser(tableDef)
 				parsedRecords := make([]goinnodb.GenericRecord, 0)
-				
+
 				// Walk and parse each record
 				rawRecords, err := goinnodb.WalkRecords(indexPage, maxRecs, true)
 				if err != nil {
@@ -175,10 +175,10 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 					fmt.Printf("  Error walking records: %v\n", err)
 				}
 			}
-			
+
 			if records != nil {
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-				
+
 				// Display parsed column values if available
 				if parseData && tableDef != nil && len(records) > 0 && len(records[0].Values) > 0 {
 					// Build header with column names
@@ -187,7 +187,7 @@ func outputText(page *goinnodb.InnerPage, showRecs bool, maxRecs int, verbose bo
 						fmt.Fprintf(w, "%s\t", col.Name)
 					}
 					fmt.Fprintln(w)
-					
+
 					// Display values
 					for i, rec := range records {
 						fmt.Fprintf(w, "  %d\t", i)

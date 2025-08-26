@@ -24,7 +24,7 @@ func ParseTableDefFromSQL(sql string) (*TableDef, error) {
 
 	tableName := ddl.Table.Name.String()
 	tableDef := NewTableDef(tableName)
-	
+
 	if ddl.TableSpec == nil {
 		return nil, fmt.Errorf("no table spec in CREATE TABLE")
 	}
@@ -42,7 +42,7 @@ func ParseTableDefFromSQL(sql string) (*TableDef, error) {
 		}
 
 		// Check for primary key in column definition
-		// Note: sqlparser may not expose this directly, we'll rely on indexes instead</		
+		// Note: sqlparser may not expose this directly, we'll rely on indexes instead</
 	}
 
 	// Parse table options

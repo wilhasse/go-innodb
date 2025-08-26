@@ -8,21 +8,21 @@ import (
 
 // TableDef represents a table definition with columns and metadata
 type TableDef struct {
-	Name           string            // Table name
-	Columns        []*Column         // All columns in order
-	ColumnMap      map[string]*Column // Column name to column mapping
-	PrimaryKeys    []string          // Primary key column names in order
-	Charset        string            // Default character set
-	Collation      string            // Default collation
-	Engine         string            // Storage engine (should be InnoDB)
-	
+	Name        string             // Table name
+	Columns     []*Column          // All columns in order
+	ColumnMap   map[string]*Column // Column name to column mapping
+	PrimaryKeys []string           // Primary key column names in order
+	Charset     string             // Default character set
+	Collation   string             // Default collation
+	Engine      string             // Storage engine (should be InnoDB)
+
 	// Cached metadata for efficient parsing
-	nullableColumns    []*Column
-	varLenColumns      []*Column
-	primaryKeyColumns  []*Column
-	nullableCount      int
-	hasNullableColumn  bool
-	hasVarLenColumn    bool
+	nullableColumns   []*Column
+	varLenColumns     []*Column
+	primaryKeyColumns []*Column
+	nullableCount     int
+	hasNullableColumn bool
+	hasVarLenColumn   bool
 }
 
 // NewTableDef creates a new table definition
@@ -39,23 +39,23 @@ func (td *TableDef) AddColumn(col *Column) error {
 	if _, exists := td.ColumnMap[col.Name]; exists {
 		return fmt.Errorf("column %s already exists", col.Name)
 	}
-	
+
 	col.Ordinal = len(td.Columns)
 	td.Columns = append(td.Columns, col)
 	td.ColumnMap[col.Name] = col
-	
+
 	// Update cached metadata
 	if col.Nullable {
 		td.nullableColumns = append(td.nullableColumns, col)
 		td.nullableCount++
 		td.hasNullableColumn = true
 	}
-	
+
 	if col.IsVariableLength() {
 		td.varLenColumns = append(td.varLenColumns, col)
 		td.hasVarLenColumn = true
 	}
-	
+
 	return nil
 }
 
@@ -63,7 +63,7 @@ func (td *TableDef) AddColumn(col *Column) error {
 func (td *TableDef) SetPrimaryKeys(keys []string) error {
 	td.PrimaryKeys = keys
 	td.primaryKeyColumns = make([]*Column, 0, len(keys))
-	
+
 	for _, key := range keys {
 		col, exists := td.ColumnMap[key]
 		if !exists {
@@ -72,7 +72,7 @@ func (td *TableDef) SetPrimaryKeys(keys []string) error {
 		col.IsPrimaryKey = true
 		td.primaryKeyColumns = append(td.primaryKeyColumns, col)
 	}
-	
+
 	return nil
 }
 
@@ -167,7 +167,7 @@ func (td *TableDef) String() string {
 		if col.IsPrimaryKey {
 			pk = " PRIMARY KEY"
 		}
-		sb.WriteString(fmt.Sprintf("  %d. %s %s(%d)%s%s\n", 
+		sb.WriteString(fmt.Sprintf("  %d. %s %s(%d)%s%s\n",
 			col.Ordinal, col.Name, col.Type, col.Length, nullable, pk))
 	}
 	if len(td.PrimaryKeys) > 0 {

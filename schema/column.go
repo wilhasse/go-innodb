@@ -20,20 +20,20 @@ const (
 	TypeBigInt    ColumnType = "BIGINT"
 
 	// String types
-	TypeChar    ColumnType = "CHAR"
-	TypeVarchar ColumnType = "VARCHAR"
-	TypeText    ColumnType = "TEXT"
-	TypeTinyText ColumnType = "TINYTEXT"
+	TypeChar       ColumnType = "CHAR"
+	TypeVarchar    ColumnType = "VARCHAR"
+	TypeText       ColumnType = "TEXT"
+	TypeTinyText   ColumnType = "TINYTEXT"
 	TypeMediumText ColumnType = "MEDIUMTEXT"
-	TypeLongText ColumnType = "LONGTEXT"
+	TypeLongText   ColumnType = "LONGTEXT"
 
 	// Binary types
-	TypeBinary    ColumnType = "BINARY"
-	TypeVarBinary ColumnType = "VARBINARY"
-	TypeBlob      ColumnType = "BLOB"
-	TypeTinyBlob  ColumnType = "TINYBLOB"
+	TypeBinary     ColumnType = "BINARY"
+	TypeVarBinary  ColumnType = "VARBINARY"
+	TypeBlob       ColumnType = "BLOB"
+	TypeTinyBlob   ColumnType = "TINYBLOB"
 	TypeMediumBlob ColumnType = "MEDIUMBLOB"
-	TypeLongBlob  ColumnType = "LONGBLOB"
+	TypeLongBlob   ColumnType = "LONGBLOB"
 
 	// Date and time types
 	TypeDate      ColumnType = "DATE"
@@ -146,11 +146,11 @@ func calculateDecimalSize(precision, scale int) int {
 	if integerDigits%9 > 0 {
 		integerBytes += (integerDigits%9 + 1) / 2
 	}
-	
+
 	fractionBytes := (scale / 9) * 4
 	if scale%9 > 0 {
 		fractionBytes += (scale%9 + 1) / 2
 	}
-	
+
 	return integerBytes + fractionBytes
 }

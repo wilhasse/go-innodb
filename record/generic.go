@@ -40,9 +40,9 @@ func (r GenericRecord) SetValue(columnName string, value interface{}) {
 // String returns a string representation of the record
 func (r GenericRecord) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Record(page=%d, pos=%d, type=%s", 
+	sb.WriteString(fmt.Sprintf("Record(page=%d, pos=%d, type=%v",
 		r.PageNumber, r.PrimaryKeyPos, r.Header.Type))
-	
+
 	if len(r.Values) > 0 {
 		sb.WriteString(", values={")
 		first := true
@@ -55,7 +55,7 @@ func (r GenericRecord) String() string {
 		}
 		sb.WriteString("}")
 	}
-	
+
 	sb.WriteString(")")
 	return sb.String()
 }

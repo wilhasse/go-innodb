@@ -73,7 +73,7 @@ func (p *IntParser) Parse(input []byte, offset int, col *schema.Column, varLen i
 			}
 			return val != 0, 1, nil
 		}
-		
+
 		return nil, 0, schema.ErrUnsupportedType
 	}
 }

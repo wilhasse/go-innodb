@@ -20,26 +20,26 @@ func GetParser(col *schema.Column) Parser {
 		schema.TypeInt, schema.TypeBigInt, schema.TypeYear,
 		schema.TypeBoolean, schema.TypeBool:
 		return intParser
-		
+
 	// String types
 	case schema.TypeChar, schema.TypeVarchar,
 		schema.TypeText, schema.TypeTinyText, schema.TypeMediumText, schema.TypeLongText,
 		schema.TypeBinary, schema.TypeVarBinary,
 		schema.TypeBlob, schema.TypeTinyBlob, schema.TypeMediumBlob, schema.TypeLongBlob:
 		return stringParser
-		
+
 	// Date/time types
 	case schema.TypeDate, schema.TypeTime, schema.TypeDateTime,
 		schema.TypeTimestamp:
 		return dateTimeParser
-		
+
 	// TODO: Add more parsers for:
 	// - DECIMAL/NUMERIC
-	// - FLOAT/DOUBLE  
+	// - FLOAT/DOUBLE
 	// - ENUM/SET
 	// - BIT
 	// - JSON
-	
+
 	default:
 		return nil
 	}

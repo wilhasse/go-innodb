@@ -2,8 +2,8 @@
 package column
 
 import (
-	"strings"
 	"github.com/wilhasse/go-innodb/schema"
+	"strings"
 )
 
 // StringParser handles VARCHAR, CHAR, TEXT and other string types
@@ -14,7 +14,7 @@ type StringParser struct {
 // Parse parses string value based on column type
 func (p *StringParser) Parse(input []byte, offset int, col *schema.Column, varLen int) (interface{}, int, error) {
 	var bytesRead int
-	
+
 	switch col.Type {
 	case schema.TypeChar:
 		// CHAR can be variable length in multi-byte charsets
@@ -47,9 +47,9 @@ func (p *StringParser) Parse(input []byte, offset int, col *schema.Column, varLe
 			str = strings.TrimRight(str, " ")
 			return str, bytesRead, nil
 		}
-		
-	case schema.TypeVarchar, schema.TypeText, schema.TypeTinyText, 
-		 schema.TypeMediumText, schema.TypeLongText:
+
+	case schema.TypeVarchar, schema.TypeText, schema.TypeTinyText,
+		schema.TypeMediumText, schema.TypeLongText:
 		// Variable length string types use varLen parameter
 		if varLen <= 0 {
 			return "", 0, nil
@@ -59,7 +59,7 @@ func (p *StringParser) Parse(input []byte, offset int, col *schema.Column, varLe
 			return nil, 0, err
 		}
 		return string(data), varLen, nil
-		
+
 	case schema.TypeBinary:
 		// Fixed length binary
 		length := col.Length
@@ -68,9 +68,9 @@ func (p *StringParser) Parse(input []byte, offset int, col *schema.Column, varLe
 			return nil, 0, err
 		}
 		return data, length, nil
-		
-	case schema.TypeVarBinary, schema.TypeBlob, schema.TypeTinyBlob, 
-		 schema.TypeMediumBlob, schema.TypeLongBlob:
+
+	case schema.TypeVarBinary, schema.TypeBlob, schema.TypeTinyBlob,
+		schema.TypeMediumBlob, schema.TypeLongBlob:
 		// Variable length binary types
 		if varLen <= 0 {
 			return []byte{}, 0, nil
@@ -80,7 +80,7 @@ func (p *StringParser) Parse(input []byte, offset int, col *schema.Column, varLe
 			return nil, 0, err
 		}
 		return data, varLen, nil
-		
+
 	default:
 		return nil, 0, schema.ErrUnsupportedType
 	}
@@ -100,16 +100,16 @@ func (p *StringParser) Skip(input []byte, offset int, col *schema.Column, varLen
 			length *= 3
 		}
 		return length, nil
-		
-	case schema.TypeVarchar, schema.TypeText, schema.TypeTinyText, 
-		 schema.TypeMediumText, schema.TypeLongText,
-		 schema.TypeVarBinary, schema.TypeBlob, schema.TypeTinyBlob, 
-		 schema.TypeMediumBlob, schema.TypeLongBlob:
+
+	case schema.TypeVarchar, schema.TypeText, schema.TypeTinyText,
+		schema.TypeMediumText, schema.TypeLongText,
+		schema.TypeVarBinary, schema.TypeBlob, schema.TypeTinyBlob,
+		schema.TypeMediumBlob, schema.TypeLongBlob:
 		return varLen, nil
-		
+
 	case schema.TypeBinary:
 		return col.Length, nil
-		
+
 	default:
 		return 0, schema.ErrUnsupportedType
 	}
