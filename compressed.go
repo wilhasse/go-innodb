@@ -77,7 +77,7 @@ func DecompressPage(src []byte, physicalSize int) ([]byte, error) {
 	// Allocate output buffer for logical page
 	dst := make([]byte, LogicalPageSize)
 
-	// Call the decompression function
+	// Call the decompression function (following Percona/Oracle approach)
 	rc := C.innodb_zip_decompress(
 		unsafe.Pointer(&src[0]),
 		C.size_t(physicalSize),

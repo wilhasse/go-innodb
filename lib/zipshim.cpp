@@ -5,6 +5,8 @@
 extern "C" {
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 }
 
 // Access to InnoDB globals (defined in mysql_stubs.cpp)
@@ -25,18 +27,29 @@ struct page_zip_des_t {
 typedef uint8_t page_t;
 typedef void page_zip_t;
 
-// External functions from libinnodb_zipdecompress.a
+// InnoDB page types (from fil0fil.h)
+#define FIL_PAGE_TYPE_OFFSET 24
+#define FIL_PAGE_INDEX 17855  // B-tree node
+
+// External functions from libinnodb_zipdecompress.a  
 // The actual C++ function signature (mangled name: _Z23page_zip_decompress_lowP14page_zip_des_tPhb)
 extern "C++" {
     bool page_zip_decompress_low(page_zip_des_t* page_zip, page_t* page, bool all);
 }
 
-// Simple init function - we'll do it ourselves since it may not be exported
-static void page_zip_des_init(page_zip_des_t* page_zip) {
+// Simple implementation of page_zip_des_init since it's not exported
+// Based on InnoDB source - just zero-initialize the structure
+static void page_zip_des_init_simple(page_zip_des_t* page_zip) {
     if (page_zip) {
-        // Basic initialization - the important fields are set by us
-        memset(page_zip, 0, sizeof(*page_zip));
+        page_zip->data = nullptr;
+        page_zip->ssize = 0;
+        // Other fields would be initialized here in real InnoDB
     }
+}
+
+// Helper function to read 16-bit values from page data (big-endian)
+static uint16_t read_uint16_be(const uint8_t* data) {
+    return (static_cast<uint16_t>(data[0]) << 8) | static_cast<uint16_t>(data[1]);
 }
 
 // Helper function for log2 calculation (Oracle's approach)
@@ -59,8 +72,12 @@ static uint32_t page_size_to_ssize(size_t physical) {
     }
 }
 
-// Main decompression function exposed to Go - following Oracle's guidance
-// Oracle's approach: update srv_page_size globals at runtime for consistency
+// Test function for debugging (can be removed in production)
+extern "C" int test_c_linking() {
+    return 42;
+}
+
+// Main decompression function exposed to Go - following Percona's approach
 extern "C" int innodb_zip_decompress(
     const void* src,        // Pointer to compressed page data  
     size_t      physical,   // Physical page size (e.g., 8192 for 8K)
@@ -80,21 +97,66 @@ extern "C" int innodb_zip_decompress(
     srv_page_size = static_cast<unsigned long>(logical);
     srv_page_size_shift = static_cast<unsigned long>(ilog2_ul(static_cast<unsigned long>(logical)));
     
-    // Build page_zip descriptor following Oracle's pattern
-    page_zip_des_t z{};  // C++11 brace initialization
-    page_zip_des_init(&z);
-    z.data = const_cast<void*>(src);
-    z.ssize = page_size_to_ssize(physical);  // derives zip shift from physical size
+    // Clear output buffer first
+    memset(dst, 0, logical);
     
-    if (z.ssize == 0) {
-        // Invalid physical page size
+    // Check if this is actually a compressed page that needs decompression
+    // Following Percona's approach: check page type and size
+    const uint8_t* page_data = static_cast<const uint8_t*>(src);
+    
+    // If physical == logical, just copy (not compressed)
+    if (physical >= logical) {
+        memcpy(dst, src, logical);
+        return 0;
+    }
+    
+    // Check page type - only decompress INDEX pages (Percona's approach)
+    uint16_t page_type = read_uint16_be(page_data + FIL_PAGE_TYPE_OFFSET);
+    if (page_type != FIL_PAGE_INDEX) {
+        // Not an index page, just copy the raw data
+        memcpy(dst, src, physical);
+        return 0;
+    }
+    
+    // This is a compressed INDEX page - attempt decompression (Percona's approach)
+    
+    // Percona's approach: create aligned temporary buffer for decompression
+    unsigned char* temp = static_cast<unsigned char*>(malloc(2 * logical));
+    if (!temp) {
         return -3;
     }
     
-    // Decompress the whole page into 'dst'
-    // Oracle's approach: page_zip_decompress_low(&z, dst, /*all=*/true)
-    bool ok = page_zip_decompress_low(&z, static_cast<page_t*>(dst), true);
+    // Align buffer (simple alignment to logical page size boundary)
+    unsigned char* aligned_temp = temp;
+    uintptr_t align_mask = logical - 1;
+    if (reinterpret_cast<uintptr_t>(temp) & align_mask) {
+        aligned_temp = reinterpret_cast<unsigned char*>(
+            (reinterpret_cast<uintptr_t>(temp) + logical) & ~align_mask);
+    }
+    memset(aligned_temp, 0, logical);
     
+    // Set up the page_zip descriptor following Percona's patterns
+    page_zip_des_t page_zip{};
+    page_zip_des_init_simple(&page_zip);
+    page_zip.data = reinterpret_cast<page_zip_t*>(const_cast<void*>(src));
+    page_zip.ssize = page_size_to_ssize(physical);
+    
+    if (page_zip.ssize == 0) {
+        // Invalid physical page size for compression
+        free(temp);
+        return -3;
+    }
+    
+    // Attempt decompression using InnoDB's low-level function
+    // This follows the exact pattern used by Percona's successful implementation
+    bool ok = page_zip_decompress_low(&page_zip, aligned_temp, true);
+    
+    if (ok) {
+        // Copy decompressed data to output buffer
+        memcpy(dst, aligned_temp, logical);
+    }
+    
+    free(temp);
     return ok ? 0 : -4;
 }
 
