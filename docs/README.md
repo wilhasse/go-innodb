@@ -6,24 +6,31 @@ Complete documentation for parsing InnoDB database pages and extracting column d
 
 ### Core Documentation
 
-1. **[Architecture Overview](ARCHITECTURE.md)**  
+1. **[Installation Guide](INSTALLATION.md)** 📍 **NEW**  
+   Complete installation instructions including:
+   - Basic setup and dependencies
+   - Compressed page support setup
+   - Runtime library configuration
+   - Platform-specific notes and troubleshooting
+
+2. **[Architecture Overview](ARCHITECTURE.md)**  
    High-level design and structure of the go-innodb library
 
-2. **[InnoDB Page Parsing](INNODB_PAGE_PARSING.md)** 📍 **NEW**  
+3. **[InnoDB Page Parsing](INNODB_PAGE_PARSING.md)** 📍 **NEW**  
    Complete guide to parsing InnoDB pages, including:
    - Page structure breakdown
    - Variable-length header handling  
    - Transaction field placement
    - Common pitfalls and solutions
 
-3. **[Compact Format Details](COMPACT_FORMAT_DETAILS.md)** 📍 **NEW**  
+4. **[Compact Format Details](COMPACT_FORMAT_DETAILS.md)** 📍 **NEW**  
    Technical specification of the compact record format:
    - Exact binary layout
    - Byte-level encoding details
    - Parsing algorithm
    - Test cases and examples
 
-4. **[Debugging Guide](DEBUGGING_GUIDE.md)** 📍 **NEW**  
+5. **[Debugging Guide](DEBUGGING_GUIDE.md)** 📍 **NEW**  
    Practical debugging techniques:
    - Symptom-based troubleshooting
    - Hex dump analysis
@@ -103,13 +110,14 @@ Records:
 - NULL bitmap handling
 - Variable-length header parsing (fixed!)
 - Transaction field handling
+- Compressed page support (ROW_FORMAT=COMPRESSED with KEY_BLOCK_SIZE 1K/2K/4K/8K)
 
 🚧 **TODO:**
 - Overflow page support
 - More data types (DECIMAL, BLOB, JSON)
 - Secondary index parsing
-- Compression support
 - Recovery from corrupted pages
+- Transparent page compression support
 
 ## Contributing
 

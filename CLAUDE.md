@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Guideline
+
+Before commiting run make to check if is compiling
+
 ## Architecture Overview
 
 This is a Go library for parsing InnoDB database pages (16KB pages). The library provides low-level parsing of InnoDB's internal page format, focusing on the compact record format.

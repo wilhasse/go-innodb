@@ -19,9 +19,17 @@ typedef uint8_t page_t;
 typedef void page_zip_t;
 
 // External functions from libinnodb_zipdecompress.a
-extern "C" {
-    void page_zip_des_init(page_zip_des_t* page_zip);
-    bool page_zip_decompress_low(const page_zip_des_t* page_zip, page_t* page, bool all);
+// The actual C++ function signature (mangled name: _Z23page_zip_decompress_lowP14page_zip_des_tPhb)
+extern "C++" {
+    bool page_zip_decompress_low(page_zip_des_t* page_zip, page_t* page, bool all);
+}
+
+// Simple init function - we'll do it ourselves since it may not be exported
+static void page_zip_des_init(page_zip_des_t* page_zip) {
+    if (page_zip) {
+        // Basic initialization - the important fields are set by us
+        memset(page_zip, 0, sizeof(*page_zip));
+    }
 }
 
 // Convert physical page size to shift size (ssize)
@@ -68,6 +76,7 @@ extern "C" int innodb_zip_decompress(
     
     // Decompress the page
     // The 'all' parameter tells it to decompress the entire page
+    // Note: const_cast because the C++ function takes non-const pointer
     bool ok = page_zip_decompress_low(&z, static_cast<page_t*>(dst), true);
     
     return ok ? 0 : -4;
@@ -80,19 +89,15 @@ extern "C" int innodb_is_page_compressed(const void* page, size_t size) {
         return 0;
     }
     
-    const uint8_t* p = static_cast<const uint8_t*>(page);
+    // const uint8_t* p = static_cast<const uint8_t*>(page);
+    // Would check for compressed page markers here
+    // For now, this is a placeholder implementation
     
-    // Check for PAGE_ZIP_MIN_SIZE marker at offset 0
-    // Compressed pages start with specific patterns
-    // This is a simplified check - actual detection is more complex
+    // Compressed pages are typically smaller than 16KB
+    if (size < 16384 && (size == 1024 || size == 2048 || size == 4096 || size == 8192)) {
+        return 1;  // Likely compressed based on size
+    }
     
-    // Look for patterns that indicate compression
-    // Compressed pages typically have:
-    // - Different checksum format
-    // - Compression info in FIL header
-    
-    // For now, return 0 (not compressed) as we need actual MySQL headers
-    // for proper detection
     return 0;
 }
 

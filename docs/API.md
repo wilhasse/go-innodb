@@ -79,6 +79,50 @@ reader := goinnodb.NewPageReader(file)
 page, err := reader.ReadPage(3)
 ```
 
+### CompressedPageReader
+
+```go
+type CompressedPageReader struct {
+    // Private fields
+}
+
+// NewCompressedPageReader creates a new reader with compression support
+func NewCompressedPageReader(r io.ReaderAt) *CompressedPageReader
+
+// ReadPage reads a page (auto-detects compression)
+func (cpr *CompressedPageReader) ReadPage(pageNo uint32) (*InnerPage, error)
+
+// ReadCompressedPage reads a compressed page with explicit physical size
+func (cpr *CompressedPageReader) ReadCompressedPage(pageNo uint32, physicalSize int) (*InnerPage, error)
+
+// SetPhysicalPageSize sets the physical page size for all reads
+func (cpr *CompressedPageReader) SetPhysicalPageSize(size int) error
+```
+
+**Usage Example:**
+```go
+file, _ := os.Open("compressed_table.ibd")
+reader := goinnodb.NewCompressedPageReader(file)
+
+// Auto-detect compression
+page, err := reader.ReadPage(4)
+
+// Or specify KEY_BLOCK_SIZE explicitly
+reader.SetPhysicalPageSize(8192) // For KEY_BLOCK_SIZE=8K
+page, err = reader.ReadPage(4)
+```
+
+**Supported KEY_BLOCK_SIZE values:**
+- `1024` (1K) - 16:1 compression ratio
+- `2048` (2K) - 8:1 compression ratio  
+- `4096` (4K) - 4:1 compression ratio
+- `8192` (8K) - 2:1 compression ratio
+
+**Requirements:**
+- Compression support must be built with `./build_compression.sh`
+- Requires `libinnodb_zipdecompress.a` and system libraries (lz4, zlib)
+- CGO must be enabled
+
 ### InnerPage
 
 ```go
@@ -332,3 +376,48 @@ func main() {
     }
 }
 ```
+
+## Compression Utility Functions
+
+The following functions are available when compression support is built:
+
+```go
+// IsPageCompressed checks if page data appears to be compressed
+func IsPageCompressed(pageData []byte) bool
+
+// DecompressPage decompresses a compressed page to 16KB
+func DecompressPage(compressedData []byte, physicalSize int) ([]byte, error)
+
+// GetCompressedPageSize returns the physical size of a compressed page
+func GetCompressedPageSize(pageData []byte) int
+```
+
+**Usage Example:**
+```go
+// Read raw page data
+rawPage := make([]byte, 8192) // For KEY_BLOCK_SIZE=8K
+n, err := file.ReadAt(rawPage, int64(pageNo * 8192))
+if err != nil {
+    return err
+}
+
+// Check if compressed
+if goinnodb.IsPageCompressed(rawPage[:n]) {
+    // Decompress to full 16KB page
+    fullPage, err := goinnodb.DecompressPage(rawPage[:n], n)
+    if err != nil {
+        return fmt.Errorf("decompression failed: %w", err)
+    }
+    
+    // Parse the decompressed page
+    page, err := goinnodb.ParsePage(fullPage)
+    // ... continue processing
+}
+```
+
+**Note:** These functions are only available when:
+- Compression support is built (`./build_compression.sh`)
+- CGO is enabled 
+- Runtime has access to `libzipshim.so`
+
+Without compression support, these functions return errors indicating compression is not available.

@@ -27,13 +27,26 @@ echo "Checking dependencies..."
 MISSING_DEPS=""
 
 # Check for lz4
-if ! pkg-config --exists liblz4 2>/dev/null && ! ldconfig -p | grep -q liblz4; then
-    MISSING_DEPS="$MISSING_DEPS liblz4"
+if ! pkg-config --exists liblz4 2>/dev/null; then
+    # Try alternative check if ldconfig is available
+    if command -v ldconfig >/dev/null 2>&1; then
+        if ! ldconfig -p 2>/dev/null | grep -q liblz4; then
+            MISSING_DEPS="$MISSING_DEPS liblz4"
+        fi
+    else
+        # Just check if the library file exists
+        if ! ls /usr/lib*/liblz4.* /usr/local/lib/liblz4.* 2>/dev/null | grep -q .; then
+            MISSING_DEPS="$MISSING_DEPS liblz4"
+        fi
+    fi
 fi
 
 # Check for zlib
-if ! pkg-config --exists zlib 2>/dev/null && ! ldconfig -p | grep -q libz; then
-    MISSING_DEPS="$MISSING_DEPS zlib"
+if ! pkg-config --exists zlib 2>/dev/null; then
+    # Try alternative check
+    if ! ls /usr/lib*/libz.* /usr/local/lib/libz.* 2>/dev/null | grep -q .; then
+        MISSING_DEPS="$MISSING_DEPS zlib"
+    fi
 fi
 
 if [ -n "$MISSING_DEPS" ]; then
@@ -46,13 +59,16 @@ fi
 echo "Compiling zipshim.cpp..."
 g++ -fPIC -O2 -Wall -std=c++11 -c zipshim.cpp -o zipshim.o
 
+echo "Compiling mysql_stubs.cpp..."
+g++ -fPIC -O2 -Wall -std=c++11 -c mysql_stubs.cpp -o mysql_stubs.o
+
 # Create shared library
 echo "Creating shared library..."
-g++ -shared -o libzipshim.so zipshim.o libinnodb_zipdecompress.a -lz -llz4 -lstdc++
+g++ -shared -o libzipshim.so zipshim.o mysql_stubs.o -Wl,--whole-archive libinnodb_zipdecompress.a -Wl,--no-whole-archive -lz -llz4 -lstdc++
 
 # Also create static library for static linking
 echo "Creating static library..."
-ar rcs libzipshim.a zipshim.o
+ar rcs libzipshim.a zipshim.o mysql_stubs.o
 
 cd ..
 
@@ -62,6 +78,10 @@ go build -tags cgo ./...
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Compression support built successfully!${NC}"
+    echo ""
+    echo "IMPORTANT: To run binaries, you need to set the library path:"
+    echo "  Option 1 (Quick): LD_LIBRARY_PATH=\$PWD/lib ./go-innodb"
+    echo "  Option 2 (Permanent): sudo cp lib/libzipshim.so /usr/local/lib/ && sudo ldconfig"
     echo ""
     echo "You can now use compressed page support in your Go code:"
     echo "  reader := goinnodb.NewCompressedPageReader(file)"

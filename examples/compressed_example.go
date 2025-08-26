@@ -58,7 +58,7 @@ func main() {
 	fmt.Printf("Page Type: %d\n", page.PageType())
 	fmt.Printf("Space ID: %d\n", page.FIL.SpaceID)
 	fmt.Printf("LSN: %d\n", page.FIL.LastModLSN)
-	
+
 	// Show page type name
 	pageTypeName := "UNKNOWN"
 	switch page.PageType() {

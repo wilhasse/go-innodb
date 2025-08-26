@@ -8,7 +8,7 @@ LDFLAGS = -shared
 TARGET = libzipshim.so
 
 # Source files
-SOURCES = zipshim.cpp
+SOURCES = zipshim.cpp mysql_stubs.cpp
 
 # Object files
 OBJECTS = $(SOURCES:.cpp=.o)
@@ -17,8 +17,9 @@ OBJECTS = $(SOURCES:.cpp=.o)
 INNODB_LIB = libinnodb_zipdecompress.a
 
 # Build the shared library
+# Note: We need to include the whole static library to resolve all symbols
 $(TARGET): $(OBJECTS)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(INNODB_LIB) -lz -llz4 -lstdc++
+	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) -Wl,--whole-archive $(INNODB_LIB) -Wl,--no-whole-archive -lz -llz4 -lstdc++
 
 # Compile source files
 %.o: %.cpp

@@ -9,8 +9,11 @@ A Go library and command-line tool for parsing InnoDB database pages (.ibd files
 - **Multiple Output Formats**: Text, JSON, or summary output
 - **Compact Format Support**: Full support for InnoDB compact record format
 - **Schema-Aware Parsing**: Parse records using table definitions from SQL files
+- **Compressed Page Support**: Read compressed InnoDB tables (ROW_FORMAT=COMPRESSED) with KEY_BLOCK_SIZE 1K/2K/4K/8K
 
 ## Installation
+
+### Basic Installation
 
 ```bash
 # Clone the repository
@@ -23,6 +26,43 @@ make build
 # Or install to $GOPATH/bin
 make install
 ```
+
+### Compressed Page Support (Optional)
+
+For reading InnoDB compressed tables (ROW_FORMAT=COMPRESSED):
+
+1. **Install system dependencies:**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install liblz4-dev zlib1g-dev g++
+   
+   # RHEL/CentOS/Fedora  
+   sudo dnf install lz4-devel zlib-devel gcc-c++
+   
+   # macOS
+   brew install lz4 zlib
+   ```
+
+2. **Add InnoDB decompression library:**
+   - Obtain `libinnodb_zipdecompress.a` from MySQL source/distribution
+   - Place it in `lib/` directory
+
+3. **Build compression support:**
+   ```bash
+   ./build_compression.sh
+   ```
+
+4. **Install shared library (choose one):**
+   ```bash
+   # Option 1: System-wide installation (recommended)
+   sudo cp lib/libzipshim.so /usr/local/lib/
+   sudo ldconfig
+   
+   # Option 2: Use library path when running
+   LD_LIBRARY_PATH=$PWD/lib ./go-innodb -file compressed.ibd
+   ```
+
+See [docs/COMPRESSED_PAGES.md](docs/COMPRESSED_PAGES.md) for detailed setup instructions.
 
 ## Usage
 

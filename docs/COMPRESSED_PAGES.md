@@ -13,6 +13,46 @@ InnoDB supports table compression using the `ROW_FORMAT=COMPRESSED` option with 
 You need the InnoDB decompression library from MySQL:
 - `libinnodb_zipdecompress.a` - Static library from MySQL source
 
+**Obtaining the Library:**
+
+1. **From MySQL Binary Distribution:**
+   ```bash
+   # Download MySQL server (tarball version)
+   wget https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.XX-linux-glibc2.17-x86_64.tar.xz
+   tar -xf mysql-8.0.XX-linux-glibc2.17-x86_64.tar.xz
+   find mysql-8.0.XX-linux-glibc2.17-x86_64 -name "*zipdecompress*" -o -name "*innodb*compress*"
+   ```
+
+2. **From MySQL Source Build:**
+   ```bash
+   # Clone MySQL source
+   git clone https://github.com/mysql/mysql-server.git
+   cd mysql-server
+   
+   # Build with compression support
+   mkdir build && cd build
+   cmake .. -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ZLIB=bundled
+   make -j4
+   
+   # Look for the library in build directories
+   find . -name "*zipdecompress*" -o -name "*innodb*compress*"
+   ```
+
+3. **Alternative Sources:**
+   - Some Linux distributions package development files separately
+   - Check for mysql-server-dev or similar packages
+   - The library may be part of libmysqlclient-dev
+
+**Installation:**
+```bash
+# Copy to project lib directory
+cp /path/to/libinnodb_zipdecompress.a /path/to/go-innodb/lib/
+
+# Verify the library
+file lib/libinnodb_zipdecompress.a
+nm lib/libinnodb_zipdecompress.a | grep decompress
+```
+
 Place this file in the `lib/` directory of the project.
 
 ### System Dependencies
@@ -52,12 +92,79 @@ chmod +x build_compression.sh
 ```bash
 # Build the C++ shim library
 cd lib
-g++ -fPIC -O2 -Wall -std=c++11 -c zipshim.cpp
-g++ -shared -o libzipshim.so zipshim.o libinnodb_zipdecompress.a -lz -llz4
+make clean && make
 cd ..
 
 # Build Go code with cgo
 go build -tags cgo
+```
+
+### Detailed Build Process
+
+The compression support requires several components to work together:
+
+1. **MySQL Symbol Stubs** (`mysql_stubs.cpp`)
+   - Provides stub implementations for InnoDB internal symbols
+   - Includes ib:: namespace classes (logger, error, warn, fatal)
+   - Implements ut_dbg_assertion_failed and memory allocation functions
+   - Required because libinnodb_zipdecompress.a has dependencies on MySQL internals
+
+2. **C++ Shim Layer** (`zipshim.cpp`)
+   - Provides extern "C" interface for Go's cgo to call
+   - Wraps InnoDB's page_zip_decompress_low function
+   - Handles page size conversions and error handling
+
+3. **Shared Library Build** (`libzipshim.so`)
+   - Links zipshim.o, mysql_stubs.o, and libinnodb_zipdecompress.a
+   - Uses --whole-archive to include all InnoDB symbols
+   - Statically links zlib and lz4 dependencies
+
+## Implementation Architecture
+
+### Integration Pattern
+
+The compression support uses a three-layer approach:
+
+```
+Go Code (compressed.go)
+    ↓ cgo calls
+C Wrapper (zipshim.cpp) 
+    ↓ C++ calls
+InnoDB Library (libinnodb_zipdecompress.a)
+    ↓ depends on  
+MySQL Stubs (mysql_stubs.cpp)
+```
+
+### Key Technical Challenges Solved
+
+1. **MySQL Symbol Dependencies**
+   - InnoDB library expects MySQL server context (logging, memory management, etc.)
+   - Solution: Implement minimal stub versions of required symbols
+   - Critical symbols: `srv_page_size`, `ib::` logging classes, `ut_dbg_assertion_failed`
+
+2. **C++ Name Mangling and Linkage**
+   - InnoDB functions use C++ linkage with mangled names
+   - Go cgo expects C-style functions
+   - Solution: C++ wrapper layer with extern "C" interface
+
+3. **Virtual Table Generation**
+   - InnoDB library expects C++ vtables for ib:: logging classes
+   - Virtual destructors must be defined out-of-line to generate vtables
+   - Solution: Define destructor bodies separately from class declarations
+
+4. **Library Linking Order**
+   - Static library must be fully included to resolve all symbols
+   - Solution: Use `--whole-archive` linker flag
+
+### File Structure
+```
+lib/
+├── libinnodb_zipdecompress.a    # InnoDB decompression library (user provided)
+├── zipshim.cpp                  # C++ wrapper for cgo interface  
+├── mysql_stubs.cpp              # MySQL internal symbol stubs
+├── Makefile                     # Build configuration
+├── libzipshim.so               # Generated shared library
+└── *.o                         # Compiled object files
 ```
 
 ## Usage
@@ -200,12 +307,98 @@ func main() {
 **"libinnodb_zipdecompress.a not found"**
 - Ensure the library is in `lib/` directory
 - Check file permissions
+- Library must be extracted from MySQL source or binary distribution
 
-**"undefined reference to lz4_*"**
-- Install liblz4-dev: `sudo apt-get install liblz4-dev`
+**"undefined reference to lz4_*" or "undefined reference to uncompress"**
+- Install compression libraries:
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install liblz4-dev zlib1g-dev
+  
+  # RHEL/CentOS/Fedora  
+  sudo dnf install lz4-devel zlib-devel
+  
+  # macOS
+  brew install lz4 zlib
+  ```
+
+**"undefined reference to srv_page_size" or InnoDB symbols**
+- This means mysql_stubs.cpp is not being compiled/linked
+- Ensure `make` is run from the `lib/` directory
+- Check that both zipshim.o and mysql_stubs.o are being linked:
+  ```bash
+  cd lib
+  make clean && make
+  nm libzipshim.so | grep srv_page_size  # Should show the symbol
+  ```
+
+**"undefined reference to ib::error::~error()" or vtable errors**
+- C++ vtable/destructor linking issues
+- Ensure mysql_stubs.cpp defines destructors outside class declarations
+- Verify C++ linking with -lstdc++:
+  ```bash
+  nm mysql_stubs.o | grep ib  # Should show ib:: symbols
+  ```
+
+**"undefined reference to ut_dbg_assertion_failed"**
+- Function signature mismatch between extern "C" and C++ linkage
+- The function must use C++ linkage (not extern "C")
+- Check mangled symbol: `nm libinnodb_zipdecompress.a | grep ut_dbg`
+
+**"multiple definition of ut_crc32"**
+- Symbol conflict between stubs and InnoDB library
+- Don't implement CRC functions in stubs (InnoDB library already has them)
+- Remove conflicting functions from mysql_stubs.cpp
 
 **"cgo not enabled"**
 - Enable cgo: `CGO_ENABLED=1 go build`
+- Verify cgo is available: `go env CGO_ENABLED`
+
+**"cannot find -lzipshim" (build time)**
+- Library not found in library path during linking
+- Set LD_LIBRARY_PATH: `export LD_LIBRARY_PATH=/path/to/lib:$LD_LIBRARY_PATH`
+- Or install library system-wide: `sudo cp lib/libzipshim.so /usr/local/lib/ && sudo ldconfig`
+
+**"error while loading shared libraries: libzipshim.so: cannot open shared object file" (runtime)**
+- Binary can't find shared library at runtime
+- **Quick fix:** Run with library path: `LD_LIBRARY_PATH=/path/to/go-innodb/lib ./go-innodb`
+- **Permanent fix:** Install system-wide:
+  ```bash
+  sudo cp lib/libzipshim.so /usr/local/lib/
+  sudo ldconfig
+  ```
+- **Alternative:** Add to your shell profile:
+  ```bash
+  echo 'export LD_LIBRARY_PATH=/home/user/go-innodb/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+  source ~/.bashrc
+  ```
+
+### Advanced Build Issues
+
+**Symbol Resolution Problems**
+Check what symbols are undefined in the InnoDB library:
+```bash
+nm -u lib/libinnodb_zipdecompress.a | grep -v GLIBC | sort | uniq
+```
+
+Check what symbols your stubs provide:
+```bash
+nm lib/mysql_stubs.o | grep -E "(srv_|ib::|ut_)"
+```
+
+**C++ Name Mangling Issues**
+Demangle symbol names to understand requirements:
+```bash
+echo "_ZN2ib5errorD1Ev" | c++filt  # Should show: ib::error::~error()
+```
+
+**Linker Problems**
+Debug linking with verbose output:
+```bash
+g++ -shared -o libzipshim.so zipshim.o mysql_stubs.o \
+    -Wl,--whole-archive libinnodb_zipdecompress.a -Wl,--no-whole-archive \
+    -lz -llz4 -lstdc++ -Wl,--verbose
+```
 
 ### Runtime Errors
 
