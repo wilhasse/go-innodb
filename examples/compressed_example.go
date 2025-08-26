@@ -54,10 +54,24 @@ func main() {
 	}
 
 	// Display page info
-	fmt.Printf("\n=== Page %d ===\n", page.PageNumber)
-	fmt.Printf("Page Type: %d (%s)\n", page.PageType(), page.PageTypeName())
-	fmt.Printf("Space ID: %d\n", page.SpaceID())
-	fmt.Printf("LSN: %d\n", page.LSN())
+	fmt.Printf("\n=== Page %d ===\n", page.PageNo)
+	fmt.Printf("Page Type: %d\n", page.PageType())
+	fmt.Printf("Space ID: %d\n", page.FIL.SpaceID)
+	fmt.Printf("LSN: %d\n", page.FIL.LastModLSN)
+	
+	// Show page type name
+	pageTypeName := "UNKNOWN"
+	switch page.PageType() {
+	case innodb.PageTypeIndex:
+		pageTypeName = "INDEX"
+	case innodb.PageTypeAllocated:
+		pageTypeName = "ALLOCATED"
+	case innodb.PageTypeUndoLog:
+		pageTypeName = "UNDO_LOG"
+	case innodb.PageTypeSDI:
+		pageTypeName = "SDI"
+	}
+	fmt.Printf("Page Type Name: %s\n", pageTypeName)
 
 	// If it's an index page, show more details
 	if page.PageType() == innodb.PageTypeIndex {
@@ -66,7 +80,13 @@ func main() {
 			fmt.Printf("Error parsing index page: %v\n", err)
 		} else {
 			fmt.Printf("\nIndex Page Details:\n")
-			fmt.Printf("  Format: %s\n", indexPage.FormatName())
+			formatName := "UNKNOWN"
+			if indexPage.Hdr.Format == innodb.FormatCompact {
+				formatName = "COMPACT"
+			} else if indexPage.Hdr.Format == innodb.FormatRedundant {
+				formatName = "REDUNDANT"
+			}
+			fmt.Printf("  Format: %s\n", formatName)
 			fmt.Printf("  Records: %d\n", indexPage.Hdr.NumUserRecs)
 			fmt.Printf("  Page Level: %d\n", indexPage.Hdr.PageLevel)
 			fmt.Printf("  Index ID: %d\n", indexPage.Hdr.IndexID)
