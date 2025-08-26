@@ -86,17 +86,18 @@ static unsigned long ilog2_ul(unsigned long v) {
     return s;
 }
 
-// Oracle engineers' CORRECT ssize calculation  
-// ssize = #bit-shifts from 512 to reach 'physical'
-// Formula: 512 << ssize = physical_size
-static inline uint32_t page_size_to_ssize(size_t physical) {
-    if (physical < 1024 || physical > 16384 || (physical & (physical - 1)) != 0) {
-        return 0; // reject non power-of-two or out-of-range sizes
+// Percona engineers' CORRECT ZIP ssize calculation  
+// ZIP formula: 1 << (10 + ssize) = physical_size
+// So 8KB → ssize=3 (because 1 << (10+3) = 1 << 13 = 8192)
+static inline uint32_t zip_shift_from_bytes(size_t z) {
+    switch (z) {
+        case 1024:  return 0; // 1KB -> ssize=0 (1 << (10+0) = 1024)
+        case 2048:  return 1; // 2KB -> ssize=1 (1 << (10+1) = 2048)
+        case 4096:  return 2; // 4KB -> ssize=2 (1 << (10+2) = 4096)  
+        case 8192:  return 3; // 8KB -> ssize=3 (1 << (10+3) = 8192)
+        case 16384: return 4; // 16KB -> ssize=4 (uncompressed/legacy)
+        default:    return 0; // Invalid => let caller handle
     }
-    // log2(physical) - log2(512)  ==>  log2(physical) - 9
-    unsigned s = 0;
-    while ((512u << s) < physical) ++s;
-    return s; // 8KB => 4 (CORRECT!)
 }
 
 
@@ -181,23 +182,22 @@ extern "C" int innodb_zip_decompress(
     // Set up the page_zip descriptor following Percona's patterns
     page_zip_des_t page_zip{};
     page_zip_des_init_simple(&page_zip);
-    // Oracle engineers' fix: point to compressed payload after FIL header, not page start
-    page_zip.data = reinterpret_cast<page_zip_t*>(
-        const_cast<unsigned char*>(static_cast<const unsigned char*>(src) + FIL_PAGE_DATA)
-    );
-    page_zip.ssize = page_size_to_ssize(physical);
+    // Correct: pass the start-of-page (including FIL header)
+    page_zip.data = reinterpret_cast<page_zip_t*>(const_cast<void*>(src));
+    // Correct: ssize is the ZIP exponent: 1 << (10 + ssize) == physical
+    page_zip.ssize = zip_shift_from_bytes(physical);  // 8 KiB -> 3
     
-    // Validate that we got a sensible ssize (minimum is 1 for 1KB)
-    if (page_zip.ssize == 0 || page_zip.ssize > 5) {
-        // Invalid ssize for compression  
+    // Validate that we got a sensible ZIP ssize (0 is valid for 1KB with ZIP formula)
+    if (page_zip.ssize > 4) {
+        // Invalid ZIP ssize for compression  
         free(temp);
         return -3;
     }
     
-    // Oracle engineers' sanity check: verify ssize calculation is correct
-    size_t expected_physical = static_cast<size_t>(512u) << page_zip.ssize;
+    // Percona engineers' sanity check: verify ZIP ssize calculation is correct
+    size_t expected_physical = static_cast<size_t>(1u) << (10 + page_zip.ssize);
     if (expected_physical != physical) {
-        fprintf(stderr, "[ASSERT] ssize mismatch: expect=%zu actual_physical=%zu (ssize=%u)\n",
+        fprintf(stderr, "[ASSERT] ZIP ssize mismatch: expect=%zu actual_physical=%zu (ssize=%u)\n",
                 expected_physical, physical, page_zip.ssize);
         free(temp);
         return -4;
@@ -205,14 +205,14 @@ extern "C" int innodb_zip_decompress(
     
     // Oracle engineers' quick sanity checks before calling decompressor
     uint16_t type = read_uint16_be(static_cast<const unsigned char*>(src) + FIL_PAGE_TYPE_OFFSET);
-    fprintf(stderr, "page_type=%u (expect 17855 for INDEX), ssize=%u (8KB should be 4)\n",
+    fprintf(stderr, "page_type=%u (expect 17855 for INDEX), ssize=%u (8KB should be 3)\n",
             (unsigned)type, (unsigned)page_zip.ssize);
     fflush(stderr);
     
     // Debug output to verify Oracle fixes are applied
     printf("[ORACLE-DEBUG] Before decompression:\n");
-    printf("[ORACLE-DEBUG]   page_zip.data = %p (should be src + 38)\n", page_zip.data);
-    printf("[ORACLE-DEBUG]   page_zip.ssize = %u (should be 4 for 8KB)\n", page_zip.ssize);
+    printf("[PERCONA-DEBUG]   page_zip.data = %p (should be src, not src+38)\n", page_zip.data);
+    printf("[PERCONA-DEBUG]   page_zip.ssize = %u (should be 3 for 8KB)\n", page_zip.ssize);
     printf("[ORACLE-DEBUG]   srv_page_size = %lu (should be 16384)\n", srv_page_size);
     printf("[ORACLE-DEBUG]   univ_page_size logical/physical = %lu/%lu\n", 
            univ_page_size.logical(), univ_page_size.physical());
